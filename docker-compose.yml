@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: safetyos
+      POSTGRES_PASSWORD: safetyos
+      POSTGRES_DB: safetyos
+    ports:
+      - '5433:5432'
+    volumes:
+      - safetyos-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  safetyos-postgres-data:

@@ -1,0 +1,467 @@
+// SafetyOS persistence layer.
+//
+// Status/category/type fields are kept as plain String columns, not Postgres
+// enums — every one of them is already validated against a hand-written
+// allow-list in each module's schema.ts on the way in, so a DB-level enum
+// would just duplicate that check while making the allowed values harder to
+// change. Wire-format fields (dates, nested JSON snapshots) are shaped to
+// match the existing TypeScript interfaces exactly, so the service layer is
+// the only thing that needs to change — routes, controllers, validation, and
+// the entire client are unaffected by this migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Reference-number counters (HZ-####, FND-####, CA-####, RA-####, INS-YYYY-####)
+// ---------------------------------------------------------------------------
+// One atomic upsert per counter instead of an in-memory variable — an in-memory
+// counter resets to its starting value on every restart and would immediately
+// collide with reference numbers already in the database.
+
+model Counter {
+  name  String @id
+  value Int    @default(0)
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String
+  workplace    String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Workplaces (Organisation -> Workplace -> Area -> Location)
+// ---------------------------------------------------------------------------
+
+model Workplace {
+  id           String   @id @default(uuid())
+  organisation String
+  name         String
+  code         String
+  industry     String
+  address      String
+  status       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  areas        Area[]
+}
+
+model Area {
+  id          String    @id @default(uuid())
+  workplaceId String
+  workplace   Workplace @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String
+  order       Int
+  locations   Location[]
+
+  @@index([workplaceId])
+}
+
+model Location {
+  id          String @id @default(uuid())
+  areaId      String
+  area        Area   @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  name        String
+  description String
+  order       Int
+
+  @@index([areaId])
+}
+
+// ---------------------------------------------------------------------------
+// Hazard Reports
+// ---------------------------------------------------------------------------
+
+model HazardReport {
+  id                   String    @id @default(uuid())
+  referenceNumber      String    @unique
+  title                String
+  description          String
+  reportType           String
+  hazardCategory       String
+  workplace            String
+  department           String
+  location             String
+  peopleAtRisk         String
+  immediateActionTaken String
+  riskLevel            String
+  status               String
+  reportedBy           String
+  assignedTo           String
+  reportedAt           DateTime
+  updatedAt            DateTime
+
+  activity HazardActivityEntry[]
+  comments HazardComment[]
+  evidence HazardEvidenceItem[]
+}
+
+model HazardActivityEntry {
+  id        String       @id @default(uuid())
+  hazardId  String
+  hazard    HazardReport @relation(fields: [hazardId], references: [id], onDelete: Cascade)
+  type      String
+  message   String
+  actor     String
+  createdAt DateTime
+
+  @@index([hazardId])
+}
+
+model HazardComment {
+  id        String       @id @default(uuid())
+  hazardId  String
+  hazard    HazardReport @relation(fields: [hazardId], references: [id], onDelete: Cascade)
+  author    String
+  message   String
+  createdAt DateTime
+
+  @@index([hazardId])
+}
+
+model HazardEvidenceItem {
+  id         String       @id @default(uuid())
+  hazardId   String
+  hazard     HazardReport @relation(fields: [hazardId], references: [id], onDelete: Cascade)
+  fileName   String
+  fileSize   Int
+  mimeType   String
+  dataUrl    String       @db.Text
+  uploadedBy String
+  uploadedAt DateTime
+
+  @@index([hazardId])
+}
+
+// ---------------------------------------------------------------------------
+// Findings
+// ---------------------------------------------------------------------------
+
+model Finding {
+  id                        String   @id @default(uuid())
+  referenceNumber           String   @unique
+  title                     String
+  description               String
+  workplace                 String
+  department                String
+  location                  String
+  riskLevel                 String
+  status                    String
+  hazardId                  String?
+  hazardReferenceNumber     String?
+  inspectionId              String?
+  inspectionReferenceNumber String?
+  createdBy                 String
+  assignedTo                String
+  dueDate                   DateTime
+  createdAt                 DateTime
+  updatedAt                 DateTime
+
+  activity FindingActivityEntry[]
+  comments FindingComment[]
+}
+
+model FindingActivityEntry {
+  id        String  @id @default(uuid())
+  findingId String
+  finding   Finding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  type      String
+  message   String
+  actor     String
+  createdAt DateTime
+
+  @@index([findingId])
+}
+
+model FindingComment {
+  id        String  @id @default(uuid())
+  findingId String
+  finding   Finding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  author    String
+  message   String
+  createdAt DateTime
+
+  @@index([findingId])
+}
+
+// ---------------------------------------------------------------------------
+// Inspection Templates
+// ---------------------------------------------------------------------------
+
+model InspectionTemplate {
+  id                   String   @id @default(uuid())
+  name                 String
+  code                 String
+  description          String
+  category             String
+  applicableIndustries String[]
+  version              Int
+  status               String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  sections TemplateSection[]
+}
+
+model TemplateSection {
+  id          String              @id @default(uuid())
+  templateId  String
+  template    InspectionTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  order       Int
+
+  questions TemplateQuestion[]
+
+  @@index([templateId])
+}
+
+model TemplateQuestion {
+  id                   String          @id @default(uuid())
+  sectionId            String
+  section              TemplateSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  text                 String
+  guidance             String
+  referenceNote        String
+  responseType         String
+  options              String[]
+  required             Boolean
+  evidenceRequired     Boolean
+  allowFindingCreation Boolean
+  order                Int
+
+  @@index([sectionId])
+}
+
+// ---------------------------------------------------------------------------
+// Inspections
+// ---------------------------------------------------------------------------
+
+model Inspection {
+  id                   String    @id @default(uuid())
+  referenceNumber      String    @unique
+  title                String
+  status               String
+  templateId           String
+  templateName         String
+  templateVersion      Int
+  // Point-in-time copy of the template as it existed when the inspection was
+  // created — deliberately denormalized (same as the in-memory version), so
+  // later edits to the live template never change a past inspection.
+  templateSnapshot     Json
+  organisation         String
+  workplace            String
+  area                 String
+  specificLocation     String
+  inspectionDate       DateTime
+  leadInspector        String
+  additionalInspectors String[]
+  purpose              String
+  scope                String
+  createdAt            DateTime
+  updatedAt            DateTime
+  submittedAt          DateTime?
+  reviewedAt           DateTime?
+
+  responses QuestionResponse[]
+  activity  InspectionActivityEntry[]
+}
+
+model QuestionResponse {
+  id               String     @id @default(uuid())
+  inspectionId     String
+  inspection       Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  questionId       String
+  sectionId        String
+  responseType     String
+  value            String     @db.Text
+  notes            String     @db.Text
+  evidenceNote     String
+  // { id, title, description, riskLevel, recommendation, immediateAction, status } | null
+  potentialFinding Json?
+  answeredAt       DateTime
+
+  @@unique([inspectionId, questionId])
+  @@index([inspectionId])
+}
+
+model InspectionActivityEntry {
+  id           String     @id @default(uuid())
+  inspectionId String
+  inspection   Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  type         String
+  message      String
+  actor        String
+  createdAt    DateTime
+
+  @@index([inspectionId])
+}
+
+// ---------------------------------------------------------------------------
+// Corrective Actions
+// ---------------------------------------------------------------------------
+
+model CorrectiveAction {
+  id                        String    @id @default(uuid())
+  referenceNumber           String    @unique
+  title                     String
+  description               String
+  workplace                 String
+  department                String
+  location                  String
+  priority                  String
+  status                    String
+  sourceType                String
+  findingId                 String?
+  findingReferenceNumber    String?
+  hazardId                  String?
+  hazardReferenceNumber     String?
+  inspectionId              String?
+  inspectionReferenceNumber String?
+  externalSourceReference   String?
+  createdBy                 String
+  assignedTo                String
+  dueDate                   DateTime
+  responseNote              String
+  respondedAt               DateTime?
+  evidenceNote              String
+  verifiedBy                String
+  verifiedAt                DateTime?
+  createdAt                 DateTime
+  updatedAt                 DateTime
+  closedAt                  DateTime?
+
+  activity CorrectiveActionActivityEntry[]
+  comments CorrectiveActionComment[]
+  evidence CorrectiveActionEvidenceItem[]
+}
+
+model CorrectiveActionActivityEntry {
+  id                 String           @id @default(uuid())
+  correctiveActionId String
+  correctiveAction   CorrectiveAction @relation(fields: [correctiveActionId], references: [id], onDelete: Cascade)
+  type               String
+  message            String
+  actor              String
+  createdAt          DateTime
+
+  @@index([correctiveActionId])
+}
+
+model CorrectiveActionComment {
+  id                 String           @id @default(uuid())
+  correctiveActionId String
+  correctiveAction   CorrectiveAction @relation(fields: [correctiveActionId], references: [id], onDelete: Cascade)
+  author             String
+  message            String
+  createdAt          DateTime
+
+  @@index([correctiveActionId])
+}
+
+model CorrectiveActionEvidenceItem {
+  id                 String           @id @default(uuid())
+  correctiveActionId String
+  correctiveAction   CorrectiveAction @relation(fields: [correctiveActionId], references: [id], onDelete: Cascade)
+  fileName           String
+  fileSize           Int
+  mimeType           String
+  dataUrl            String           @db.Text
+  uploadedBy         String
+  uploadedAt         DateTime
+
+  @@index([correctiveActionId])
+}
+
+// ---------------------------------------------------------------------------
+// Risk Assessments
+// ---------------------------------------------------------------------------
+
+model RiskAssessment {
+  id             String    @id @default(uuid())
+  referenceNumber String   @unique
+  title          String
+  assessmentType String
+  description    String
+  workplace      String
+  department     String
+  location       String
+  status         String
+  assessedBy     String
+  approvedBy     String
+  assessmentDate DateTime
+  nextReviewDate DateTime?
+  createdAt      DateTime
+  updatedAt      DateTime
+
+  items    RiskAssessmentItem[]
+  activity RiskAssessmentActivityEntry[]
+}
+
+model RiskAssessmentItem {
+  id                 String         @id @default(uuid())
+  riskAssessmentId   String
+  riskAssessment     RiskAssessment @relation(fields: [riskAssessmentId], references: [id], onDelete: Cascade)
+  hazard             String         @db.Text
+  whoMightBeHarmed   String
+  existingControls   String
+  likelihood         Int
+  severity           Int
+  riskScore          Int
+  riskLevel          String
+  additionalControls String
+  residualLikelihood Int?
+  residualSeverity   Int?
+  residualRiskScore  Int?
+  residualRiskLevel  String?
+  order              Int
+
+  @@index([riskAssessmentId])
+}
+
+model RiskAssessmentActivityEntry {
+  id               String         @id @default(uuid())
+  riskAssessmentId String
+  riskAssessment   RiskAssessment @relation(fields: [riskAssessmentId], references: [id], onDelete: Cascade)
+  type             String
+  message          String
+  actor            String
+  createdAt        DateTime
+
+  @@index([riskAssessmentId])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+model NotificationEvent {
+  id                      String    @id @default(uuid())
+  type                    String
+  recipient               String
+  subject                 String
+  message                 String
+  relatedEntityType       String
+  relatedEntityId         String
+  relatedEntityReference  String
+  createdAt               DateTime  @default(now())
+  deliveredAt             DateTime?
+  readAt                  DateTime?
+}
