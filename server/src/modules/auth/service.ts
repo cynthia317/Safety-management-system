@@ -26,7 +26,7 @@ function toPublic(user: User): PublicUser {
 
 export async function findByEmail(email: string): Promise<User | undefined> {
   const normalized = email.trim().toLowerCase();
-  const row = await prisma.user.findFirst({ where: { email: { equals: normalized, mode: 'insensitive' } } });
+  const row = await prisma.user.findFirst({ where: { email: normalized } });
   return row ? fromRow(row) : undefined;
 }
 

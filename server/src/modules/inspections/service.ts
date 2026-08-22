@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { nextCounterValue } from '../../lib/counters';
+import { decodeStringArray, encodeStringArray } from '../../lib/stringArray';
 import * as templateService from '../inspectionTemplates/service';
 import type {
   Inspection as PrismaInspection,
@@ -42,7 +43,7 @@ function fromRow(row: PrismaInspection): Inspection {
     specificLocation: row.specificLocation,
     inspectionDate: row.inspectionDate.toISOString(),
     leadInspector: row.leadInspector,
-    additionalInspectors: row.additionalInspectors,
+    additionalInspectors: decodeStringArray(row.additionalInspectors),
     purpose: row.purpose,
     scope: row.scope,
     responses: [],
@@ -145,7 +146,7 @@ export async function createInspection(input: CreateInspectionInput, actor: stri
       specificLocation: input.specificLocation,
       inspectionDate: new Date(input.inspectionDate),
       leadInspector: input.leadInspector,
-      additionalInspectors: input.additionalInspectors,
+      additionalInspectors: encodeStringArray(input.additionalInspectors),
       purpose: input.purpose,
       scope: input.scope,
       createdAt: now,
@@ -173,7 +174,7 @@ export async function updateInspection(id: string, input: UpdateInspectionInput)
   if (input.specificLocation !== undefined) fieldChanges.specificLocation = input.specificLocation;
   if (input.inspectionDate !== undefined) fieldChanges.inspectionDate = new Date(input.inspectionDate);
   if (input.leadInspector !== undefined) fieldChanges.leadInspector = input.leadInspector;
-  if (input.additionalInspectors !== undefined) fieldChanges.additionalInspectors = input.additionalInspectors;
+  if (input.additionalInspectors !== undefined) fieldChanges.additionalInspectors = encodeStringArray(input.additionalInspectors);
   if (input.purpose !== undefined) fieldChanges.purpose = input.purpose;
   if (input.scope !== undefined) fieldChanges.scope = input.scope;
 

@@ -35,13 +35,21 @@ export function createApp(): Express {
 
   // Sessions persist to Postgres (their own `session` table, auto-created below) so a
   // restart or redeploy doesn't sign everyone out — the same pool config.database_url
-  // uses for every other table.
-  const sessionPool = new Pool({ connectionString: config.databaseUrl });
-  const PgSession = connectPgSimple(session);
+  // uses for every other table. Falls back to the default in-memory store for local
+  // SQLite dev (DATABASE_URL="file:...") since connect-pg-simple needs a real Postgres
+  // connection.
+  const isSqlite = config.databaseUrl.startsWith('file:');
+  const sessionStore = isSqlite
+    ? undefined
+    : new (connectPgSimple(session))({
+        pool: new Pool({ connectionString: config.databaseUrl }),
+        tableName: 'session',
+        createTableIfMissing: true,
+      });
 
   app.use(
     session({
-      store: new PgSession({ pool: sessionPool, tableName: 'session', createTableIfMissing: true }),
+      store: sessionStore,
       secret: config.sessionSecret,
       resave: false,
       saveUninitialized: false,
