@@ -1,6 +1,5 @@
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { FormField } from '../form/FormField';
-import { Input } from '../form/Input';
 import { Textarea } from '../form/Textarea';
 import { Button } from '../Button';
 import { RiskScaleSelect } from './RiskScaleSelect';

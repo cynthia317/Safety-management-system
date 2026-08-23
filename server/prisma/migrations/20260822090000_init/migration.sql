@@ -1,57 +1,68 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateTable
 CREATE TABLE "Counter" (
-    "name" TEXT NOT NULL PRIMARY KEY,
-    "value" INTEGER NOT NULL DEFAULT 0
+    "name" TEXT NOT NULL,
+    "value" INTEGER NOT NULL DEFAULT 0,
+
+    CONSTRAINT "Counter_pkey" PRIMARY KEY ("name")
 );
 
 -- CreateTable
 CREATE TABLE "User" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "role" TEXT NOT NULL,
     "workplace" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Workplace" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "organisation" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "industry" TEXT NOT NULL,
     "address" TEXT NOT NULL,
     "status" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Workplace_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Area" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "workplaceId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "order" INTEGER NOT NULL,
-    CONSTRAINT "Area_workplaceId_fkey" FOREIGN KEY ("workplaceId") REFERENCES "Workplace" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+
+    CONSTRAINT "Area_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Location" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "areaId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "order" INTEGER NOT NULL,
-    CONSTRAINT "Location_areaId_fkey" FOREIGN KEY ("areaId") REFERENCES "Area" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+
+    CONSTRAINT "Location_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "HazardReport" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "referenceNumber" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT NOT NULL,
@@ -66,47 +77,52 @@ CREATE TABLE "HazardReport" (
     "status" TEXT NOT NULL,
     "reportedBy" TEXT NOT NULL,
     "assignedTo" TEXT NOT NULL,
-    "reportedAt" DATETIME NOT NULL,
-    "updatedAt" DATETIME NOT NULL
+    "reportedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "HazardReport_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "HazardActivityEntry" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "hazardId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "actor" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    CONSTRAINT "HazardActivityEntry_hazardId_fkey" FOREIGN KEY ("hazardId") REFERENCES "HazardReport" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "HazardActivityEntry_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "HazardComment" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "hazardId" TEXT NOT NULL,
     "author" TEXT NOT NULL,
     "message" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    CONSTRAINT "HazardComment_hazardId_fkey" FOREIGN KEY ("hazardId") REFERENCES "HazardReport" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "HazardComment_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "HazardEvidenceItem" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "hazardId" TEXT NOT NULL,
     "fileName" TEXT NOT NULL,
     "fileSize" INTEGER NOT NULL,
     "mimeType" TEXT NOT NULL,
     "dataUrl" TEXT NOT NULL,
     "uploadedBy" TEXT NOT NULL,
-    "uploadedAt" DATETIME NOT NULL,
-    CONSTRAINT "HazardEvidenceItem_hazardId_fkey" FOREIGN KEY ("hazardId") REFERENCES "HazardReport" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "uploadedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "HazardEvidenceItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Finding" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "referenceNumber" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT NOT NULL,
@@ -121,75 +137,83 @@ CREATE TABLE "Finding" (
     "inspectionReferenceNumber" TEXT,
     "createdBy" TEXT NOT NULL,
     "assignedTo" TEXT NOT NULL,
-    "dueDate" DATETIME NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    "updatedAt" DATETIME NOT NULL
+    "dueDate" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Finding_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "FindingActivityEntry" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "findingId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "actor" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    CONSTRAINT "FindingActivityEntry_findingId_fkey" FOREIGN KEY ("findingId") REFERENCES "Finding" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "FindingActivityEntry_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "FindingComment" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "findingId" TEXT NOT NULL,
     "author" TEXT NOT NULL,
     "message" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    CONSTRAINT "FindingComment_findingId_fkey" FOREIGN KEY ("findingId") REFERENCES "Finding" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "FindingComment_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "InspectionTemplate" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "category" TEXT NOT NULL,
-    "applicableIndustries" TEXT NOT NULL,
+    "applicableIndustries" TEXT[],
     "version" INTEGER NOT NULL,
     "status" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "InspectionTemplate_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "TemplateSection" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "templateId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "order" INTEGER NOT NULL,
-    CONSTRAINT "TemplateSection_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "InspectionTemplate" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+
+    CONSTRAINT "TemplateSection_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "TemplateQuestion" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "sectionId" TEXT NOT NULL,
     "text" TEXT NOT NULL,
     "guidance" TEXT NOT NULL,
     "referenceNote" TEXT NOT NULL,
     "responseType" TEXT NOT NULL,
-    "options" TEXT NOT NULL,
+    "options" TEXT[],
     "required" BOOLEAN NOT NULL,
     "evidenceRequired" BOOLEAN NOT NULL,
     "allowFindingCreation" BOOLEAN NOT NULL,
     "order" INTEGER NOT NULL,
-    CONSTRAINT "TemplateQuestion_sectionId_fkey" FOREIGN KEY ("sectionId") REFERENCES "TemplateSection" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+
+    CONSTRAINT "TemplateQuestion_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Inspection" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "referenceNumber" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "status" TEXT NOT NULL,
@@ -201,20 +225,22 @@ CREATE TABLE "Inspection" (
     "workplace" TEXT NOT NULL,
     "area" TEXT NOT NULL,
     "specificLocation" TEXT NOT NULL,
-    "inspectionDate" DATETIME NOT NULL,
+    "inspectionDate" TIMESTAMP(3) NOT NULL,
     "leadInspector" TEXT NOT NULL,
-    "additionalInspectors" TEXT NOT NULL,
+    "additionalInspectors" TEXT[],
     "purpose" TEXT NOT NULL,
     "scope" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    "updatedAt" DATETIME NOT NULL,
-    "submittedAt" DATETIME,
-    "reviewedAt" DATETIME
+    "createdAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "submittedAt" TIMESTAMP(3),
+    "reviewedAt" TIMESTAMP(3),
+
+    CONSTRAINT "Inspection_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "QuestionResponse" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "inspectionId" TEXT NOT NULL,
     "questionId" TEXT NOT NULL,
     "sectionId" TEXT NOT NULL,
@@ -223,24 +249,26 @@ CREATE TABLE "QuestionResponse" (
     "notes" TEXT NOT NULL,
     "evidenceNote" TEXT NOT NULL,
     "potentialFinding" JSONB,
-    "answeredAt" DATETIME NOT NULL,
-    CONSTRAINT "QuestionResponse_inspectionId_fkey" FOREIGN KEY ("inspectionId") REFERENCES "Inspection" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "answeredAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "QuestionResponse_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "InspectionActivityEntry" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "inspectionId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "actor" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    CONSTRAINT "InspectionActivityEntry_inspectionId_fkey" FOREIGN KEY ("inspectionId") REFERENCES "Inspection" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "InspectionActivityEntry_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "CorrectiveAction" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "referenceNumber" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT NOT NULL,
@@ -259,54 +287,59 @@ CREATE TABLE "CorrectiveAction" (
     "externalSourceReference" TEXT,
     "createdBy" TEXT NOT NULL,
     "assignedTo" TEXT NOT NULL,
-    "dueDate" DATETIME NOT NULL,
+    "dueDate" TIMESTAMP(3) NOT NULL,
     "responseNote" TEXT NOT NULL,
-    "respondedAt" DATETIME,
+    "respondedAt" TIMESTAMP(3),
     "evidenceNote" TEXT NOT NULL,
     "verifiedBy" TEXT NOT NULL,
-    "verifiedAt" DATETIME,
-    "createdAt" DATETIME NOT NULL,
-    "updatedAt" DATETIME NOT NULL,
-    "closedAt" DATETIME
+    "verifiedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "closedAt" TIMESTAMP(3),
+
+    CONSTRAINT "CorrectiveAction_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "CorrectiveActionActivityEntry" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "correctiveActionId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "actor" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    CONSTRAINT "CorrectiveActionActivityEntry_correctiveActionId_fkey" FOREIGN KEY ("correctiveActionId") REFERENCES "CorrectiveAction" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "CorrectiveActionActivityEntry_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "CorrectiveActionComment" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "correctiveActionId" TEXT NOT NULL,
     "author" TEXT NOT NULL,
     "message" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    CONSTRAINT "CorrectiveActionComment_correctiveActionId_fkey" FOREIGN KEY ("correctiveActionId") REFERENCES "CorrectiveAction" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "CorrectiveActionComment_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "CorrectiveActionEvidenceItem" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "correctiveActionId" TEXT NOT NULL,
     "fileName" TEXT NOT NULL,
     "fileSize" INTEGER NOT NULL,
     "mimeType" TEXT NOT NULL,
     "dataUrl" TEXT NOT NULL,
     "uploadedBy" TEXT NOT NULL,
-    "uploadedAt" DATETIME NOT NULL,
-    CONSTRAINT "CorrectiveActionEvidenceItem_correctiveActionId_fkey" FOREIGN KEY ("correctiveActionId") REFERENCES "CorrectiveAction" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "uploadedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "CorrectiveActionEvidenceItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "RiskAssessment" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "referenceNumber" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "assessmentType" TEXT NOT NULL,
@@ -317,15 +350,17 @@ CREATE TABLE "RiskAssessment" (
     "status" TEXT NOT NULL,
     "assessedBy" TEXT NOT NULL,
     "approvedBy" TEXT NOT NULL,
-    "assessmentDate" DATETIME NOT NULL,
-    "nextReviewDate" DATETIME,
-    "createdAt" DATETIME NOT NULL,
-    "updatedAt" DATETIME NOT NULL
+    "assessmentDate" TIMESTAMP(3) NOT NULL,
+    "nextReviewDate" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "RiskAssessment_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "RiskAssessmentItem" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "riskAssessmentId" TEXT NOT NULL,
     "hazard" TEXT NOT NULL,
     "whoMightBeHarmed" TEXT NOT NULL,
@@ -340,23 +375,25 @@ CREATE TABLE "RiskAssessmentItem" (
     "residualRiskScore" INTEGER,
     "residualRiskLevel" TEXT,
     "order" INTEGER NOT NULL,
-    CONSTRAINT "RiskAssessmentItem_riskAssessmentId_fkey" FOREIGN KEY ("riskAssessmentId") REFERENCES "RiskAssessment" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+
+    CONSTRAINT "RiskAssessmentItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "RiskAssessmentActivityEntry" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "riskAssessmentId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "actor" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL,
-    CONSTRAINT "RiskAssessmentActivityEntry_riskAssessmentId_fkey" FOREIGN KEY ("riskAssessmentId") REFERENCES "RiskAssessment" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "RiskAssessmentActivityEntry_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "NotificationEvent" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "recipient" TEXT NOT NULL,
     "subject" TEXT NOT NULL,
@@ -364,9 +401,11 @@ CREATE TABLE "NotificationEvent" (
     "relatedEntityType" TEXT NOT NULL,
     "relatedEntityId" TEXT NOT NULL,
     "relatedEntityReference" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "deliveredAt" DATETIME,
-    "readAt" DATETIME
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "deliveredAt" TIMESTAMP(3),
+    "readAt" TIMESTAMP(3),
+
+    CONSTRAINT "NotificationEvent_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -437,3 +476,52 @@ CREATE INDEX "RiskAssessmentItem_riskAssessmentId_idx" ON "RiskAssessmentItem"("
 
 -- CreateIndex
 CREATE INDEX "RiskAssessmentActivityEntry_riskAssessmentId_idx" ON "RiskAssessmentActivityEntry"("riskAssessmentId");
+
+-- AddForeignKey
+ALTER TABLE "Area" ADD CONSTRAINT "Area_workplaceId_fkey" FOREIGN KEY ("workplaceId") REFERENCES "Workplace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Location" ADD CONSTRAINT "Location_areaId_fkey" FOREIGN KEY ("areaId") REFERENCES "Area"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "HazardActivityEntry" ADD CONSTRAINT "HazardActivityEntry_hazardId_fkey" FOREIGN KEY ("hazardId") REFERENCES "HazardReport"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "HazardComment" ADD CONSTRAINT "HazardComment_hazardId_fkey" FOREIGN KEY ("hazardId") REFERENCES "HazardReport"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "HazardEvidenceItem" ADD CONSTRAINT "HazardEvidenceItem_hazardId_fkey" FOREIGN KEY ("hazardId") REFERENCES "HazardReport"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FindingActivityEntry" ADD CONSTRAINT "FindingActivityEntry_findingId_fkey" FOREIGN KEY ("findingId") REFERENCES "Finding"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FindingComment" ADD CONSTRAINT "FindingComment_findingId_fkey" FOREIGN KEY ("findingId") REFERENCES "Finding"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TemplateSection" ADD CONSTRAINT "TemplateSection_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "InspectionTemplate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TemplateQuestion" ADD CONSTRAINT "TemplateQuestion_sectionId_fkey" FOREIGN KEY ("sectionId") REFERENCES "TemplateSection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "QuestionResponse" ADD CONSTRAINT "QuestionResponse_inspectionId_fkey" FOREIGN KEY ("inspectionId") REFERENCES "Inspection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InspectionActivityEntry" ADD CONSTRAINT "InspectionActivityEntry_inspectionId_fkey" FOREIGN KEY ("inspectionId") REFERENCES "Inspection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CorrectiveActionActivityEntry" ADD CONSTRAINT "CorrectiveActionActivityEntry_correctiveActionId_fkey" FOREIGN KEY ("correctiveActionId") REFERENCES "CorrectiveAction"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CorrectiveActionComment" ADD CONSTRAINT "CorrectiveActionComment_correctiveActionId_fkey" FOREIGN KEY ("correctiveActionId") REFERENCES "CorrectiveAction"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CorrectiveActionEvidenceItem" ADD CONSTRAINT "CorrectiveActionEvidenceItem_correctiveActionId_fkey" FOREIGN KEY ("correctiveActionId") REFERENCES "CorrectiveAction"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RiskAssessmentItem" ADD CONSTRAINT "RiskAssessmentItem_riskAssessmentId_fkey" FOREIGN KEY ("riskAssessmentId") REFERENCES "RiskAssessment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RiskAssessmentActivityEntry" ADD CONSTRAINT "RiskAssessmentActivityEntry_riskAssessmentId_fkey" FOREIGN KEY ("riskAssessmentId") REFERENCES "RiskAssessment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

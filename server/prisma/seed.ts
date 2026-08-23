@@ -546,7 +546,7 @@ async function seedInspectionTemplate() {
       code: 'GWS-01',
       description: 'A broad, industry-neutral inspection covering the fundamentals every workplace should have in place, regardless of sector.',
       category: 'General Workplace Safety',
-      applicableIndustries: JSON.stringify(['Office', 'Retail', 'Warehouse', 'SME', 'NGO', 'Government', 'Hospitality', 'School']),
+      applicableIndustries: ['Office', 'Retail', 'Warehouse', 'SME', 'NGO', 'Government', 'Hospitality', 'School'],
       version: 1,
       status: 'Active',
       sections: {
@@ -557,9 +557,9 @@ async function seedInspectionTemplate() {
             order: 0,
             questions: {
               create: [
-                { text: 'Is the workplace generally clean, tidy, and well organised?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: false, allowFindingCreation: true, order: 0 },
-                { text: 'Are floors, walls, and ceilings in good condition and free of damage?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: false, allowFindingCreation: true, order: 1 },
-                { text: 'Is lighting adequate throughout the workplace?', guidance: 'Check for flickering, dim, or unlit areas, including stairwells.', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: false, allowFindingCreation: true, order: 2 },
+                { text: 'Is the workplace generally clean, tidy, and well organised?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: false, allowFindingCreation: true, order: 0 },
+                { text: 'Are floors, walls, and ceilings in good condition and free of damage?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: false, allowFindingCreation: true, order: 1 },
+                { text: 'Is lighting adequate throughout the workplace?', guidance: 'Check for flickering, dim, or unlit areas, including stairwells.', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: false, allowFindingCreation: true, order: 2 },
               ],
             },
           },
@@ -569,9 +569,9 @@ async function seedInspectionTemplate() {
             order: 1,
             questions: {
               create: [
-                { text: 'Are fire extinguishers present, accessible, and in date?', guidance: '', referenceNote: 'Confirm annual service tag is current.', responseType: 'compliance', options: '[]', required: true, evidenceRequired: true, allowFindingCreation: true, order: 0 },
-                { text: 'Are emergency exits clearly marked and unobstructed?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: false, allowFindingCreation: true, order: 1 },
-                { text: 'Is there a current, visibly posted evacuation plan?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: false, allowFindingCreation: true, order: 2 },
+                { text: 'Are fire extinguishers present, accessible, and in date?', guidance: '', referenceNote: 'Confirm annual service tag is current.', responseType: 'compliance', options: [], required: true, evidenceRequired: true, allowFindingCreation: true, order: 0 },
+                { text: 'Are emergency exits clearly marked and unobstructed?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: false, allowFindingCreation: true, order: 1 },
+                { text: 'Is there a current, visibly posted evacuation plan?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: false, allowFindingCreation: true, order: 2 },
               ],
             },
           },
@@ -581,8 +581,8 @@ async function seedInspectionTemplate() {
             order: 2,
             questions: {
               create: [
-                { text: 'Are electrical panels accessible and free of obstruction?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: false, allowFindingCreation: true, order: 0 },
-                { text: 'Are cables, plugs, and sockets free of visible damage?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: true, allowFindingCreation: true, order: 1 },
+                { text: 'Are electrical panels accessible and free of obstruction?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: false, allowFindingCreation: true, order: 0 },
+                { text: 'Are cables, plugs, and sockets free of visible damage?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: true, allowFindingCreation: true, order: 1 },
               ],
             },
           },
@@ -592,8 +592,8 @@ async function seedInspectionTemplate() {
             order: 3,
             questions: {
               create: [
-                { text: 'Is a first aid kit available, accessible, and adequately stocked?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: true, allowFindingCreation: true, order: 0 },
-                { text: 'Is at least one trained first aider available during working hours?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: false, allowFindingCreation: true, order: 1 },
+                { text: 'Is a first aid kit available, accessible, and adequately stocked?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: true, allowFindingCreation: true, order: 0 },
+                { text: 'Is at least one trained first aider available during working hours?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: false, allowFindingCreation: true, order: 1 },
               ],
             },
           },
@@ -603,8 +603,8 @@ async function seedInspectionTemplate() {
             order: 4,
             questions: {
               create: [
-                { text: 'Is appropriate PPE available for tasks that require it?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: false, allowFindingCreation: true, order: 0 },
-                { text: 'Is PPE being worn correctly where required?', guidance: '', referenceNote: '', responseType: 'compliance', options: '[]', required: true, evidenceRequired: true, allowFindingCreation: true, order: 1 },
+                { text: 'Is appropriate PPE available for tasks that require it?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: false, allowFindingCreation: true, order: 0 },
+                { text: 'Is PPE being worn correctly where required?', guidance: '', referenceNote: '', responseType: 'compliance', options: [], required: true, evidenceRequired: true, allowFindingCreation: true, order: 1 },
               ],
             },
           },

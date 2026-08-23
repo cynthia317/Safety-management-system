@@ -22,3 +22,8 @@ npm-debug.log*
 
 # Uploads (local dev evidence/photo storage, added in a later phase)
 uploads
+
+# Local SQLite databases — this project is Postgres-only from prisma/schema.prisma
+# onward; a local .db file here means a stray/experimental database, never real data.
+*.db
+*.db-journal

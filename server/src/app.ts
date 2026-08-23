@@ -34,28 +34,24 @@ export function createApp(): Express {
   app.use(express.json({ limit: '50mb' }));
 
   // Sessions persist to Postgres (their own `session` table, auto-created below) so a
-  // restart or redeploy doesn't sign everyone out — the same pool config.database_url
-  // uses for every other table. Falls back to the default in-memory store for local
-  // SQLite dev (DATABASE_URL="file:...") since connect-pg-simple needs a real Postgres
-  // connection.
-  const isSqlite = config.databaseUrl.startsWith('file:');
-  const sessionStore = isSqlite
-    ? undefined
-    : new (connectPgSimple(session))({
-        pool: new Pool({ connectionString: config.databaseUrl }),
-        tableName: 'session',
-        createTableIfMissing: true,
-      });
+  // restart or redeploy doesn't sign everyone out — the same pool config.databaseUrl
+  // uses for every other table.
+  const sessionPool = new Pool({ connectionString: config.databaseUrl });
+  const PgSession = connectPgSimple(session);
 
   app.use(
     session({
-      store: sessionStore,
+      store: new PgSession({ pool: sessionPool, tableName: 'session', createTableIfMissing: true }),
       secret: config.sessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
-        sameSite: 'lax',
+        // Client (Vercel) and server (Render/Railway) are different domains in production,
+        // so the session cookie must be sent cross-site — that requires SameSite=None, which
+        // browsers only honor when Secure is also set. Locally both run on localhost, where
+        // Lax is correct and Secure would break plain-HTTP dev.
+        sameSite: config.nodeEnv === 'production' ? 'none' : 'lax',
         secure: config.nodeEnv === 'production',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       },

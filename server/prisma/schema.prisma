@@ -14,7 +14,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -143,7 +143,7 @@ model HazardEvidenceItem {
   fileName   String
   fileSize   Int
   mimeType   String
-  dataUrl    String
+  dataUrl    String       @db.Text
   uploadedBy String
   uploadedAt DateTime
 
@@ -211,8 +211,7 @@ model InspectionTemplate {
   code                 String
   description          String
   category             String
-  // JSON-encoded string[] — SQLite has no native scalar list type (see lib/stringArray.ts).
-  applicableIndustries String
+  applicableIndustries String[]
   version              Int
   status               String
   createdAt            DateTime @default(now())
@@ -242,8 +241,7 @@ model TemplateQuestion {
   guidance             String
   referenceNote        String
   responseType         String
-  // JSON-encoded string[] — SQLite has no native scalar list type (see lib/stringArray.ts).
-  options              String
+  options              String[]
   required             Boolean
   evidenceRequired     Boolean
   allowFindingCreation Boolean
@@ -274,8 +272,7 @@ model Inspection {
   specificLocation     String
   inspectionDate       DateTime
   leadInspector        String
-  // JSON-encoded string[] — SQLite has no native scalar list type (see lib/stringArray.ts).
-  additionalInspectors String
+  additionalInspectors String[]
   purpose              String
   scope                String
   createdAt            DateTime
@@ -294,8 +291,8 @@ model QuestionResponse {
   questionId       String
   sectionId        String
   responseType     String
-  value            String
-  notes            String
+  value            String     @db.Text
+  notes            String     @db.Text
   evidenceNote     String
   // { id, title, description, riskLevel, recommendation, immediateAction, status } | null
   potentialFinding Json?
@@ -386,7 +383,7 @@ model CorrectiveActionEvidenceItem {
   fileName           String
   fileSize           Int
   mimeType           String
-  dataUrl            String
+  dataUrl            String           @db.Text
   uploadedBy         String
   uploadedAt         DateTime
 
@@ -422,7 +419,7 @@ model RiskAssessmentItem {
   id                 String         @id @default(uuid())
   riskAssessmentId   String
   riskAssessment     RiskAssessment @relation(fields: [riskAssessmentId], references: [id], onDelete: Cascade)
-  hazard             String
+  hazard             String         @db.Text
   whoMightBeHarmed   String
   existingControls   String
   likelihood         Int
