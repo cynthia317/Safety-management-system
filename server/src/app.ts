@@ -1,5 +1,6 @@
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import { Pool } from 'pg';
@@ -22,6 +23,8 @@ export function createApp(): Express {
   // proxy / load balancer (Render, Railway, Fly, Nginx, etc.), which is the normal case
   // in production. Harmless in local dev, where there is no proxy.
   app.set('trust proxy', 1);
+
+  app.use(helmet());
 
   app.use(
     cors({
