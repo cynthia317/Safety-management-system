@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import * as findingService from './service';
-import { validateComment, validateCreateFinding, validateUpdateFinding } from './schema';
+import * as inspectionService from '../inspections/service';
+import { validateComment, validateCreateFinding, validateCreateFindingFromResponse, validateUpdateFinding } from './schema';
 import { canAccessRecordWorkplace, canManageFinding, workplaceScopeWhere } from '../auth/permissions';
 
 function forbiddenWorkplace(res: Response): void {
@@ -11,7 +12,8 @@ function forbiddenWorkplace(res: Response): void {
 
 export async function listFindingsHandler(req: Request, res: Response): Promise<void> {
   const hazardId = typeof req.query.hazardId === 'string' ? req.query.hazardId : undefined;
-  res.json({ data: await findingService.listFindings({ hazardId, workplace: workplaceScopeWhere(req.user!) }) });
+  const inspectionId = typeof req.query.inspectionId === 'string' ? req.query.inspectionId : undefined;
+  res.json({ data: await findingService.listFindings({ hazardId, inspectionId, workplace: workplaceScopeWhere(req.user!) }) });
 }
 
 export async function getFindingHandler(req: Request, res: Response): Promise<void> {
@@ -61,8 +63,63 @@ export async function createFindingHandler(req: Request, res: Response): Promise
 
   value.createdBy = req.user!.name;
 
-  const finding = await findingService.createFinding(value);
-  res.status(201).json({ data: finding });
+  const result = await findingService.createFinding(value);
+  if ('error' in result) {
+    res.status(400).json({ error: { code: 'INVALID_SOURCE_LINK', message: result.error } });
+    return;
+  }
+
+  res.status(201).json({ data: result });
+}
+
+export async function createFindingFromResponseHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageFinding(req.user!.role)) {
+    res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Your role cannot create findings.' } });
+    return;
+  }
+
+  const inspectionId = req.params.id as string;
+  const questionId = req.params.questionId as string;
+
+  const inspection = await inspectionService.getInspectionDetail(inspectionId);
+  if (!inspection) {
+    res.status(404).json({ error: { code: 'NOT_FOUND', message: `Inspection "${inspectionId}" was not found.` } });
+    return;
+  }
+
+  if (!canAccessRecordWorkplace(req.user!, inspection.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
+  const { errors, value } = validateCreateFindingFromResponse(req.body);
+  if (errors) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Please correct the highlighted fields.', details: errors },
+    });
+    return;
+  }
+
+  value.createdBy = req.user!.name;
+
+  const result = await findingService.createFindingFromInspectionResponse(inspectionId, questionId, value);
+
+  if (!result.ok) {
+    if (result.error === 'INSPECTION_NOT_FOUND') {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: `Inspection "${inspectionId}" was not found.` } });
+      return;
+    }
+    if (result.error === 'RESPONSE_NOT_FOUND') {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: `Question "${questionId}" has no recorded response.` } });
+      return;
+    }
+    res.status(400).json({
+      error: { code: 'NO_POTENTIAL_FINDING', message: 'This response was not flagged as a potential finding.' },
+    });
+    return;
+  }
+
+  res.status(result.reused ? 200 : 201).json({ data: result.finding });
 }
 
 export async function updateFindingHandler(req: Request, res: Response): Promise<void> {

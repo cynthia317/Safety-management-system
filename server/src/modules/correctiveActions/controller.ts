@@ -21,6 +21,8 @@ function forbiddenWorkplace(res: Response): void {
 
 export async function listCorrectiveActionsHandler(req: Request, res: Response): Promise<void> {
   const hazardId = typeof req.query.hazardId === 'string' ? req.query.hazardId : undefined;
+  const inspectionId = typeof req.query.inspectionId === 'string' ? req.query.inspectionId : undefined;
+  const riskAssessmentId = typeof req.query.riskAssessmentId === 'string' ? req.query.riskAssessmentId : undefined;
   const findingIdParam = req.query.findingId;
   const findingIds = Array.isArray(findingIdParam)
     ? findingIdParam.filter((v): v is string => typeof v === 'string')
@@ -28,7 +30,15 @@ export async function listCorrectiveActionsHandler(req: Request, res: Response):
       ? [findingIdParam]
       : undefined;
 
-  res.json({ data: await actionService.listCorrectiveActions({ hazardId, findingIds, workplace: workplaceScopeWhere(req.user!) }) });
+  res.json({
+    data: await actionService.listCorrectiveActions({
+      hazardId,
+      findingIds,
+      inspectionId,
+      riskAssessmentId,
+      workplace: workplaceScopeWhere(req.user!),
+    }),
+  });
 }
 
 export async function getCorrectiveActionHandler(req: Request, res: Response): Promise<void> {
@@ -73,8 +83,13 @@ export async function createCorrectiveActionHandler(req: Request, res: Response)
   // otherwise anyone could attribute a corrective action to someone else in the audit trail.
   value.createdBy = req.user!.name;
 
-  const action = await actionService.createCorrectiveAction(value);
-  res.status(201).json({ data: action });
+  const result = await actionService.createCorrectiveAction(value);
+  if ('error' in result) {
+    res.status(400).json({ error: { code: 'INVALID_SOURCE_LINK', message: result.error } });
+    return;
+  }
+
+  res.status(201).json({ data: result });
 }
 
 export async function updateCorrectiveActionHandler(req: Request, res: Response): Promise<void> {

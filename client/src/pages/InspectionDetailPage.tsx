@@ -13,6 +13,7 @@ import { InspectionChecklistView } from '../components/inspections/InspectionChe
 import { PotentialFindingsPanel } from '../components/inspections/PotentialFindingsPanel';
 import { InspectionEvidenceGallery } from '../components/inspections/InspectionEvidenceGallery';
 import { InspectionCorrectiveActionsPanel } from '../components/inspections/InspectionCorrectiveActionsPanel';
+import { InspectionFindingsPanel } from '../components/inspections/InspectionFindingsPanel';
 import { InspectionDetailSkeleton } from '../components/inspections/InspectionDetailSkeleton';
 import { getInspection, saveResponses, updateInspection } from '../lib/inspectionsApi';
 import { ApiError } from '../lib/api';
@@ -244,6 +245,7 @@ export function InspectionDetailPage() {
                 )}
               </SectionCard>
 
+              <InspectionFindingsPanel inspectionId={inspection.id} />
               <InspectionCorrectiveActionsPanel inspectionId={inspection.id} />
             </div>
 

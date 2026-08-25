@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { nextCounterValue } from '../../lib/counters';
+import { validateHazardLink, validateInspectionLink, sourceLinkErrorMessage } from '../../lib/sourceLinks';
 import type {
   Finding as PrismaFinding,
   FindingActivityEntry as PrismaFindingActivityEntry,
@@ -7,6 +8,7 @@ import type {
 } from '@prisma/client';
 import type {
   CreateFindingCommentInput,
+  CreateFindingFromResponseInput,
   CreateFindingInput,
   Finding,
   FindingActivityEntry,
@@ -38,6 +40,7 @@ function fromRow(row: PrismaFinding): Finding {
     hazardReferenceNumber: row.hazardReferenceNumber,
     inspectionId: row.inspectionId,
     inspectionReferenceNumber: row.inspectionReferenceNumber,
+    questionResponseId: row.questionResponseId,
     createdBy: row.createdBy,
     assignedTo: row.assignedTo,
     dueDate: row.dueDate.toISOString(),
@@ -63,6 +66,7 @@ function commentFromRow(row: PrismaFindingComment): FindingComment {
 
 export interface ListFindingsFilter {
   hazardId?: string;
+  inspectionId?: string;
   workplace?: { equals: string; mode: 'insensitive' };
 }
 
@@ -70,6 +74,7 @@ export async function listFindings(filter: ListFindingsFilter = {}): Promise<Fin
   const rows = await prisma.finding.findMany({
     where: {
       ...(filter.hazardId ? { hazardId: filter.hazardId } : {}),
+      ...(filter.inspectionId ? { inspectionId: filter.inspectionId } : {}),
       ...(filter.workplace ? { workplace: filter.workplace } : {}),
     },
     orderBy: { createdAt: 'desc' },
@@ -87,7 +92,18 @@ export async function getFindingDetail(id: string): Promise<FindingDetail | unde
   return { ...fromRow(row), activity: row.activity.map(activityFromRow), comments: row.comments.map(commentFromRow) };
 }
 
-export async function createFinding(input: CreateFindingInput): Promise<Finding> {
+export async function createFinding(input: CreateFindingInput): Promise<Finding | { error: string }> {
+  // hazardId/inspectionId are mutually exclusive already (enforced in schema.ts) — at
+  // most one of these runs.
+  if (input.hazardId) {
+    const result = await validateHazardLink(input.hazardId, input.workplace);
+    if (typeof result === 'string') return { error: sourceLinkErrorMessage(result, 'hazard report') };
+  }
+  if (input.inspectionId) {
+    const result = await validateInspectionLink(input.inspectionId, input.workplace);
+    if (typeof result === 'string') return { error: sourceLinkErrorMessage(result, 'inspection') };
+  }
+
   const now = new Date();
 
   const row = await prisma.finding.create({
@@ -102,6 +118,106 @@ export async function createFinding(input: CreateFindingInput): Promise<Finding>
   });
 
   return fromRow(row);
+}
+
+export type CreateFindingFromResponseResult =
+  | { ok: true; finding: Finding; reused: boolean }
+  | { ok: false; error: 'INSPECTION_NOT_FOUND' | 'RESPONSE_NOT_FOUND' | 'NO_POTENTIAL_FINDING' };
+
+/**
+ * Turns a flagged inspection response into a real Finding, transactionally, and links
+ * both directions: Finding.inspectionId/questionResponseId, and the response's
+ * `potentialFinding.status` flips to 'Created'. Workplace/department/location are always
+ * taken from the inspection itself — never client input — so there's no cross-workplace
+ * value to validate here.
+ *
+ * De-duplication is two-layered: an upfront lookup returns the existing Finding if one is
+ * already linked to this response (the normal "someone already did this" case), and the
+ * `Finding.questionResponseId` unique constraint is the authoritative backstop against a
+ * genuine race between two near-simultaneous requests — see the catch below.
+ */
+export async function createFindingFromInspectionResponse(
+  inspectionId: string,
+  questionId: string,
+  input: CreateFindingFromResponseInput,
+): Promise<CreateFindingFromResponseResult> {
+  const inspection = await prisma.inspection.findUnique({ where: { id: inspectionId } });
+  if (!inspection) return { ok: false, error: 'INSPECTION_NOT_FOUND' };
+
+  const response = await prisma.questionResponse.findUnique({
+    where: { inspectionId_questionId: { inspectionId, questionId } },
+  });
+  if (!response) return { ok: false, error: 'RESPONSE_NOT_FOUND' };
+  if (!response.potentialFinding) return { ok: false, error: 'NO_POTENTIAL_FINDING' };
+
+  const existingFinding = await prisma.finding.findUnique({ where: { questionResponseId: response.id } });
+  if (existingFinding) {
+    return { ok: true, finding: fromRow(existingFinding), reused: true };
+  }
+
+  const now = new Date();
+  const referenceNumber = await nextReferenceNumber();
+  const potentialFinding = response.potentialFinding as Record<string, unknown>;
+
+  try {
+    const created = await prisma.$transaction(async (tx) => {
+      const finding = await tx.finding.create({
+        data: {
+          referenceNumber,
+          title: input.title,
+          description: input.description,
+          workplace: inspection.workplace,
+          department: inspection.area,
+          location: inspection.specificLocation,
+          riskLevel: input.riskLevel,
+          status: 'Open',
+          inspectionId: inspection.id,
+          inspectionReferenceNumber: inspection.referenceNumber,
+          questionResponseId: response.id,
+          createdBy: input.createdBy,
+          assignedTo: input.assignedTo,
+          dueDate: new Date(input.dueDate),
+          createdAt: now,
+          updatedAt: now,
+          activity: {
+            create: {
+              type: 'created',
+              message: `Finding created from inspection ${inspection.referenceNumber}.`,
+              actor: input.createdBy,
+              createdAt: now,
+            },
+          },
+        },
+      });
+
+      await tx.questionResponse.update({
+        where: { id: response.id },
+        data: { potentialFinding: { ...potentialFinding, status: 'Created' } },
+      });
+
+      await tx.inspectionActivityEntry.create({
+        data: {
+          inspectionId: inspection.id,
+          type: 'finding_created',
+          message: `Finding ${finding.referenceNumber} created from a flagged response.`,
+          actor: input.createdBy,
+          createdAt: now,
+        },
+      });
+
+      return finding;
+    });
+
+    return { ok: true, finding: fromRow(created), reused: false };
+  } catch (err) {
+    // P2002 = unique constraint violation on questionResponseId — a concurrent request
+    // won the race and created the Finding first. Reuse it instead of erroring.
+    if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002') {
+      const winner = await prisma.finding.findUnique({ where: { questionResponseId: response.id } });
+      if (winner) return { ok: true, finding: fromRow(winner), reused: true };
+    }
+    throw err;
+  }
 }
 
 // Caller (controller) has already fetched and 404-checked the record, so `existing` is

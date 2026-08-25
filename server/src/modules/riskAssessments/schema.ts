@@ -91,6 +91,8 @@ export function validateCreateRiskAssessment(body: unknown): ValidationResult<Cr
       workplace: (b.workplace as string).trim(),
       department: (b.department as string).trim(),
       location: isNonEmptyString(b.location) ? b.location.trim() : '',
+      hazardId: isNonEmptyString(b.hazardId) ? b.hazardId.trim() : null,
+      hazardReferenceNumber: isNonEmptyString(b.hazardReferenceNumber) ? b.hazardReferenceNumber.trim() : null,
       assessedBy: (b.assessedBy as string).trim(),
       assessmentDate: (b.assessmentDate as string).trim(),
       nextReviewDate: isNonEmptyString(b.nextReviewDate) ? b.nextReviewDate.trim() : '',

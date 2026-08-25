@@ -36,11 +36,18 @@ export interface ValidatedCorrectiveActionFormData {
 }
 
 export interface CorrectiveActionSourceContext {
-  kind: 'hazard' | 'finding' | 'inspection';
+  kind: 'hazard' | 'finding' | 'inspection' | 'riskAssessment';
   id: string;
   referenceNumber: string;
   title: string;
 }
+
+const SOURCE_CONTEXT_PATHS: Record<CorrectiveActionSourceContext['kind'], string> = {
+  hazard: 'hazards',
+  finding: 'findings',
+  inspection: 'inspections',
+  riskAssessment: 'risk-assessments',
+};
 
 interface CorrectiveActionFormProps {
   mode: 'create' | 'edit';
@@ -128,7 +135,7 @@ export function CorrectiveActionForm({
           <span>
             Linked to {sourceContext.kind}{' '}
             <Link
-              to={`/${sourceContext.kind === 'hazard' ? 'hazards' : sourceContext.kind === 'finding' ? 'findings' : 'inspections'}/${sourceContext.id}`}
+              to={`/${SOURCE_CONTEXT_PATHS[sourceContext.kind]}/${sourceContext.id}`}
               className="font-medium underline hover:no-underline"
             >
               {sourceContext.referenceNumber}

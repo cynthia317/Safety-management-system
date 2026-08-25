@@ -51,6 +51,10 @@ export function canManageInspectionTemplates(role: Role): boolean {
   return role !== 'Worker';
 }
 
+export function canManageRiskAssessments(role: Role): boolean {
+  return role !== 'Worker';
+}
+
 export function canWorkOnCorrectiveAction(_role: Role): boolean {
   // Everyone can progress work (start work / submit response) — not restricted to the
   // exact assignee, since actions are sometimes handed off within a team informally.

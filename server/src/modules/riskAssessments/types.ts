@@ -37,6 +37,8 @@ export interface RiskAssessment {
   department: string;
   location: string;
   status: RiskAssessmentStatus;
+  hazardId: string | null;
+  hazardReferenceNumber: string | null;
   assessedBy: string;
   approvedBy: string;
   assessmentDate: string;
@@ -82,6 +84,8 @@ export interface CreateRiskAssessmentInput {
   workplace: string;
   department: string;
   location: string;
+  hazardId: string | null;
+  hazardReferenceNumber: string | null;
   assessedBy: string;
   assessmentDate: string;
   nextReviewDate: string;

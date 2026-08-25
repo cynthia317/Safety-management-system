@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, CheckCheck, Pencil, Send, XCircle } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { AlertTriangle, CheckCheck, Pencil, Send, Wrench, XCircle } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
 import { EmptyState } from '../components/EmptyState';
@@ -12,15 +12,18 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ActivityTimeline } from '../components/ActivityTimeline';
 import { RiskItemsView } from '../components/risk-assessments/RiskItemsView';
 import { RiskMatrixBadge } from '../components/risk-assessments/RiskMatrixBadge';
+import { RiskAssessmentRelatedRecordsPanel } from '../components/risk-assessments/RiskAssessmentRelatedRecordsPanel';
 import { getRiskAssessment, updateRiskAssessment } from '../lib/riskAssessmentsApi';
 import { ApiError } from '../lib/api';
 import { useToast } from '../lib/ToastContext';
 import { useAuth } from '../lib/AuthContext';
+import { canCreateCorrectiveAction } from '../lib/roles';
 import { formatDate } from '../lib/format';
 import type { RiskAssessmentDetail, RiskAssessmentStatus } from '../lib/riskAssessmentTypes';
 
 export function RiskAssessmentDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const { user } = useAuth();
 
@@ -119,13 +122,22 @@ export function RiskAssessmentDetailPage() {
     { id: 'overview', label: 'Overview' },
     { id: 'items', label: 'Risk Items', badge: assessment.items.length },
     { id: 'activity', label: 'Activity', badge: assessment.activity.length },
+    { id: 'related', label: 'Related Records' },
   ];
+
+  const createCorrectiveActionButton = canCreateCorrectiveAction(user!.role) ? (
+    <Button variant="secondary" onClick={() => navigate(`/corrective-actions/new?riskAssessmentId=${assessment.id}`)}>
+      <Wrench className="h-4 w-4" />
+      Create Corrective Action
+    </Button>
+  ) : null;
 
   const headerActions = (() => {
     switch (assessment.status) {
       case 'Draft':
         return (
           <>
+            {createCorrectiveActionButton}
             <Link to={`/risk-assessments/${assessment.id}/edit`}>
               <Button variant="secondary">
                 <Pencil className="h-4 w-4" />
@@ -141,6 +153,7 @@ export function RiskAssessmentDetailPage() {
       case 'Under Review':
         return (
           <>
+            {createCorrectiveActionButton}
             <Link to={`/risk-assessments/${assessment.id}/edit`}>
               <Button variant="secondary">
                 <Pencil className="h-4 w-4" />
@@ -156,6 +169,7 @@ export function RiskAssessmentDetailPage() {
       case 'Approved':
         return (
           <>
+            {createCorrectiveActionButton}
             <Link to={`/risk-assessments/${assessment.id}/edit`}>
               <Button variant="secondary">
                 <Pencil className="h-4 w-4" />
@@ -169,7 +183,7 @@ export function RiskAssessmentDetailPage() {
           </>
         );
       default:
-        return null;
+        return createCorrectiveActionButton;
     }
   })();
 
@@ -261,6 +275,8 @@ export function RiskAssessmentDetailPage() {
             <ActivityTimeline items={assessment.activity} />
           </SectionCard>
         )}
+
+        {activeTab === 'related' && <RiskAssessmentRelatedRecordsPanel assessment={assessment} />}
       </div>
 
       {showCloseConfirm && (

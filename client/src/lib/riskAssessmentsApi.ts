@@ -10,8 +10,9 @@ interface DataEnvelope<T> {
   data: T;
 }
 
-export function listRiskAssessments(): Promise<RiskAssessment[]> {
-  return apiRequest<DataEnvelope<RiskAssessment[]>>('/api/risk-assessments').then((res) => res.data);
+export function listRiskAssessments(filter?: { hazardId?: string }): Promise<RiskAssessment[]> {
+  const query = filter?.hazardId ? `?hazardId=${encodeURIComponent(filter.hazardId)}` : '';
+  return apiRequest<DataEnvelope<RiskAssessment[]>>(`/api/risk-assessments${query}`).then((res) => res.data);
 }
 
 export function getRiskAssessment(id: string): Promise<RiskAssessmentDetail> {

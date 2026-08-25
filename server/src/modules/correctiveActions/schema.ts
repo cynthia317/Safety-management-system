@@ -132,6 +132,15 @@ export function validateCreateCorrectiveAction(body: unknown): ValidationResult<
   if (!isNonEmptyString(b.createdBy)) errors.createdBy = 'Creator name is required.';
   if (!isValidDate(b.dueDate)) errors.dueDate = 'Select a valid due date.';
 
+  const findingId = isNonEmptyString(b.findingId) ? b.findingId.trim() : null;
+  const hazardId = isNonEmptyString(b.hazardId) ? b.hazardId.trim() : null;
+  const inspectionId = isNonEmptyString(b.inspectionId) ? b.inspectionId.trim() : null;
+  const riskAssessmentId = isNonEmptyString(b.riskAssessmentId) ? b.riskAssessmentId.trim() : null;
+  const sourceLinkCount = [findingId, hazardId, inspectionId, riskAssessmentId].filter((v) => v !== null).length;
+  if (sourceLinkCount > 1) {
+    errors.sourceType = 'A corrective action can only be linked to one source record.';
+  }
+
   if (Object.keys(errors).length > 0) {
     return { errors, value: undefined as unknown as CreateCorrectiveActionInput };
   }
@@ -146,12 +155,16 @@ export function validateCreateCorrectiveAction(body: unknown): ValidationResult<
       location: (b.location as string).trim(),
       priority: b.priority as RiskLevel,
       sourceType,
-      findingId: isNonEmptyString(b.findingId) ? b.findingId.trim() : null,
+      findingId,
       findingReferenceNumber: isNonEmptyString(b.findingReferenceNumber) ? b.findingReferenceNumber.trim() : null,
-      hazardId: isNonEmptyString(b.hazardId) ? b.hazardId.trim() : null,
+      hazardId,
       hazardReferenceNumber: isNonEmptyString(b.hazardReferenceNumber) ? b.hazardReferenceNumber.trim() : null,
-      inspectionId: isNonEmptyString(b.inspectionId) ? b.inspectionId.trim() : null,
+      inspectionId,
       inspectionReferenceNumber: isNonEmptyString(b.inspectionReferenceNumber) ? b.inspectionReferenceNumber.trim() : null,
+      riskAssessmentId,
+      riskAssessmentReferenceNumber: isNonEmptyString(b.riskAssessmentReferenceNumber)
+        ? b.riskAssessmentReferenceNumber.trim()
+        : null,
       externalSourceReference: isNonEmptyString(b.externalSourceReference) ? b.externalSourceReference.trim() : null,
       createdBy: (b.createdBy as string).trim(),
       assignedTo: (b.assignedTo as string).trim(),

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, FilePlus, History, ListChecks, MessageSquare, Paperclip, PlayCircle, RefreshCw, Save } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FilePlus, FileSearch, History, ListChecks, MessageSquare, Paperclip, PlayCircle, RefreshCw, Save } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 
@@ -13,7 +13,8 @@ export type ActivityEntryType =
   | 'section_completed'
   | 'saved'
   | 'submitted'
-  | 'evidence_added';
+  | 'evidence_added'
+  | 'finding_created';
 
 export interface ActivityTimelineEntry {
   id: string;
@@ -35,6 +36,7 @@ const TYPE_ICON: Record<ActivityEntryType, LucideIcon> = {
   saved: Save,
   submitted: CheckCircle2,
   evidence_added: Paperclip,
+  finding_created: FileSearch,
 };
 
 function formatTimestamp(iso: string): string {

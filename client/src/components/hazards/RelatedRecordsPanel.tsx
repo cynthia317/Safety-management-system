@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ClipboardCheck, FileSearch, Wrench } from 'lucide-react';
+import { FileSearch, ShieldAlert, Wrench } from 'lucide-react';
 import { SectionCard } from '../SectionCard';
 import { EmptyState } from '../EmptyState';
 import { LoadingState } from '../LoadingState';
@@ -8,8 +8,10 @@ import { StatusBadge } from '../StatusBadge';
 import { RiskBadge } from '../RiskBadge';
 import { listFindings } from '../../lib/findingsApi';
 import { listCorrectiveActions } from '../../lib/correctiveActionsApi';
+import { listRiskAssessments } from '../../lib/riskAssessmentsApi';
 import type { Finding } from '../../lib/findingTypes';
 import type { CorrectiveAction } from '../../lib/correctiveActionTypes';
+import type { RiskAssessment } from '../../lib/riskAssessmentTypes';
 
 interface RelatedRecordsPanelProps {
   hazardId: string;
@@ -18,6 +20,7 @@ interface RelatedRecordsPanelProps {
 export function RelatedRecordsPanel({ hazardId }: RelatedRecordsPanelProps) {
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [actions, setActions] = useState<CorrectiveAction[] | null>(null);
+  const [riskAssessments, setRiskAssessments] = useState<RiskAssessment[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,6 +41,14 @@ export function RelatedRecordsPanel({ hazardId }: RelatedRecordsPanelProps) {
           setFindings([]);
           setActions([]);
         }
+      });
+
+    listRiskAssessments({ hazardId })
+      .then((linked) => {
+        if (!cancelled) setRiskAssessments(linked);
+      })
+      .catch(() => {
+        if (!cancelled) setRiskAssessments([]);
       });
 
     return () => {
@@ -111,12 +122,36 @@ export function RelatedRecordsPanel({ hazardId }: RelatedRecordsPanelProps) {
         )}
       </SectionCard>
 
-      <SectionCard title="Inspection">
-        <EmptyState
-          icon={ClipboardCheck}
-          title="No inspection linked"
-          description="Inspections that reference this hazard will appear here once the module is available."
-        />
+      <SectionCard title="Risk Assessment">
+        {riskAssessments === null ? (
+          <LoadingState label="Loading…" />
+        ) : riskAssessments.length === 0 ? (
+          <EmptyState
+            icon={ShieldAlert}
+            title="No risk assessment yet"
+            description="Use Create Risk Assessment above to assess risk following this hazard."
+          />
+        ) : (
+          <ul className="space-y-2">
+            {riskAssessments.map((assessment) => (
+              <li key={assessment.id}>
+                <Link
+                  to={`/risk-assessments/${assessment.id}`}
+                  className="flex items-center gap-3 rounded-md border border-border bg-canvas-raised p-3 transition-colors hover:border-accent/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-xs text-muted">{assessment.referenceNumber}</p>
+                    <p className="truncate text-sm font-medium text-heading">{assessment.title}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <RiskBadge level={assessment.overallRiskLevel} />
+                    <StatusBadge status={assessment.status} />
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </SectionCard>
     </div>
   );

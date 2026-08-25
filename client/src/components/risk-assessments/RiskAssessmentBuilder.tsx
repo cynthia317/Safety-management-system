@@ -28,6 +28,9 @@ export interface RiskAssessmentBuilderErrors extends Partial<Record<keyof RiskAs
 
 interface RiskAssessmentBuilderProps {
   initialAssessment?: RiskAssessment;
+  /** Prefills fields (e.g. workplace/department from a source hazard) when creating a new
+   * assessment — ignored once initialAssessment is set (edit mode already has real data). */
+  initialMeta?: Partial<RiskAssessmentMetaValues>;
   workplaceSuggestions: string[];
   departmentSuggestions: string[];
   saveLabel: string;
@@ -37,6 +40,7 @@ interface RiskAssessmentBuilderProps {
 
 export function RiskAssessmentBuilder({
   initialAssessment,
+  initialMeta,
   workplaceSuggestions,
   departmentSuggestions,
   saveLabel,
@@ -44,13 +48,13 @@ export function RiskAssessmentBuilder({
   onCancel,
 }: RiskAssessmentBuilderProps) {
   const [meta, setMeta] = useState<RiskAssessmentMetaValues>({
-    title: initialAssessment?.title ?? '',
-    assessmentType: initialAssessment?.assessmentType ?? '',
-    description: initialAssessment?.description ?? '',
-    workplace: initialAssessment?.workplace ?? '',
-    department: initialAssessment?.department ?? '',
-    location: initialAssessment?.location ?? '',
-    assessedBy: initialAssessment?.assessedBy ?? '',
+    title: initialAssessment?.title ?? initialMeta?.title ?? '',
+    assessmentType: initialAssessment?.assessmentType ?? initialMeta?.assessmentType ?? '',
+    description: initialAssessment?.description ?? initialMeta?.description ?? '',
+    workplace: initialAssessment?.workplace ?? initialMeta?.workplace ?? '',
+    department: initialAssessment?.department ?? initialMeta?.department ?? '',
+    location: initialAssessment?.location ?? initialMeta?.location ?? '',
+    assessedBy: initialAssessment?.assessedBy ?? initialMeta?.assessedBy ?? '',
     assessmentDate: initialAssessment ? toDateInputValue(initialAssessment.assessmentDate) : new Date().toISOString().slice(0, 10),
     nextReviewDate: initialAssessment?.nextReviewDate ? toDateInputValue(initialAssessment.nextReviewDate) : '',
   });

@@ -13,10 +13,17 @@ interface DataEnvelope<T> {
   data: T;
 }
 
-export function listCorrectiveActions(filter?: { hazardId?: string; findingId?: string[] }): Promise<CorrectiveAction[]> {
+export function listCorrectiveActions(filter?: {
+  hazardId?: string;
+  findingId?: string[];
+  inspectionId?: string;
+  riskAssessmentId?: string;
+}): Promise<CorrectiveAction[]> {
   const params = new URLSearchParams();
   if (filter?.hazardId) params.set('hazardId', filter.hazardId);
   for (const id of filter?.findingId ?? []) params.append('findingId', id);
+  if (filter?.inspectionId) params.set('inspectionId', filter.inspectionId);
+  if (filter?.riskAssessmentId) params.set('riskAssessmentId', filter.riskAssessmentId);
   const query = params.toString();
   return apiRequest<DataEnvelope<CorrectiveAction[]>>(`/api/corrective-actions${query ? `?${query}` : ''}`).then(
     (res) => res.data,

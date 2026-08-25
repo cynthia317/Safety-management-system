@@ -1,5 +1,6 @@
 import type {
   CreateFindingCommentInput,
+  CreateFindingFromResponseInput,
   CreateFindingInput,
   FindingStatus,
   RiskLevel,
@@ -65,6 +66,12 @@ export function validateCreateFinding(body: unknown): ValidationResult<CreateFin
 
   if (!isValidDate(b.dueDate)) {
     errors.dueDate = 'Select a valid due date.';
+  }
+
+  const hasHazardLink = isNonEmptyString(b.hazardId);
+  const hasInspectionLink = isNonEmptyString(b.inspectionId);
+  if (hasHazardLink && hasInspectionLink) {
+    errors.hazardId = 'A finding can only be linked to one source record.';
   }
 
   if (Object.keys(errors).length > 0) {
@@ -177,6 +184,49 @@ export function validateUpdateFinding(body: unknown): ValidationResult<UpdateFin
   }
 
   return { errors: null, value };
+}
+
+// Workplace/department/location are deliberately not accepted here — for a finding
+// created from a flagged inspection response, those always come from the inspection
+// itself (see findings/service.ts#createFindingFromInspectionResponse), not the client,
+// so there's no cross-workplace value to validate against in the first place.
+export function validateCreateFindingFromResponse(body: unknown): ValidationResult<CreateFindingFromResponseInput> {
+  const b = asRecord(body);
+  const errors: ValidationErrors = {};
+
+  if (!isNonEmptyString(b.title)) {
+    errors.title = 'Title is required.';
+  } else if (b.title.trim().length > 160) {
+    errors.title = 'Title must be 160 characters or fewer.';
+  }
+
+  if (!isNonEmptyString(b.description)) {
+    errors.description = 'Description is required.';
+  }
+
+  if (!isNonEmptyString(b.riskLevel) || !RISK_LEVELS.includes(b.riskLevel as RiskLevel)) {
+    errors.riskLevel = 'Select a risk level.';
+  }
+
+  if (!isValidDate(b.dueDate)) {
+    errors.dueDate = 'Select a valid due date.';
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { errors, value: undefined as unknown as CreateFindingFromResponseInput };
+  }
+
+  return {
+    errors: null,
+    value: {
+      title: (b.title as string).trim(),
+      description: (b.description as string).trim(),
+      riskLevel: b.riskLevel as RiskLevel,
+      assignedTo: isNonEmptyString(b.assignedTo) ? b.assignedTo.trim() : '',
+      dueDate: new Date(b.dueDate as string).toISOString(),
+      createdBy: '', // overwritten by the controller with the authenticated caller's name
+    },
+  };
 }
 
 export function validateComment(body: unknown): ValidationResult<CreateFindingCommentInput> {

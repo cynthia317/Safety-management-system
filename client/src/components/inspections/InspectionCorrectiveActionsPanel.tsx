@@ -19,10 +19,10 @@ export function InspectionCorrectiveActionsPanel({ inspectionId }: InspectionCor
   useEffect(() => {
     let cancelled = false;
 
-    listCorrectiveActions()
-      .then((all) => {
+    listCorrectiveActions({ inspectionId })
+      .then((linked) => {
         if (cancelled) return;
-        setActions(all.filter((a) => a.inspectionId === inspectionId));
+        setActions(linked);
       })
       .catch(() => {
         if (!cancelled) setActions([]);

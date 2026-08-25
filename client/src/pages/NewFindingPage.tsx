@@ -3,12 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { LoadingState } from '../components/LoadingState';
 import { FindingForm, type FindingSourceContext, type ValidatedFindingFormData } from '../components/findings/FindingForm';
-import { createFinding } from '../lib/findingsApi';
+import { createFinding, createFindingFromInspectionResponse } from '../lib/findingsApi';
 import { addHazardComment, getHazard } from '../lib/hazardsApi';
-import { getInspection, saveResponses } from '../lib/inspectionsApi';
+import { getInspection } from '../lib/inspectionsApi';
 import { useToast } from '../lib/ToastContext';
 import type { FindingFormValues } from '../lib/findingTypes';
-import type { ResponseInput } from '../lib/inspectionTypes';
 
 export function NewFindingPage() {
   const navigate = useNavigate();
@@ -85,12 +84,28 @@ export function NewFindingPage() {
   }, [hazardId, inspectionId, questionId]);
 
   async function handleSubmit(data: ValidatedFindingFormData) {
+    if (sourceContext?.kind === 'inspection' && questionId) {
+      // Transactional: the backend links Finding -> Inspection/QuestionResponse and flips
+      // potentialFinding.status to 'Created' in one step — see
+      // findingsApi.createFindingFromInspectionResponse.
+      const created = await createFindingFromInspectionResponse(sourceContext.id, questionId, {
+        title: data.title,
+        description: data.description,
+        riskLevel: data.riskLevel,
+        assignedTo: data.assignedTo,
+        dueDate: data.dueDate,
+      });
+      showToast('success', `Finding ${created.referenceNumber} created.`);
+      navigate(`/findings/${created.id}`);
+      return;
+    }
+
     const created = await createFinding({
       ...data,
       hazardId: sourceContext?.kind === 'hazard' ? sourceContext.id : null,
       hazardReferenceNumber: sourceContext?.kind === 'hazard' ? sourceContext.referenceNumber : null,
-      inspectionId: sourceContext?.kind === 'inspection' ? sourceContext.id : null,
-      inspectionReferenceNumber: sourceContext?.kind === 'inspection' ? sourceContext.referenceNumber : null,
+      inspectionId: null,
+      inspectionReferenceNumber: null,
     });
 
     if (sourceContext?.kind === 'hazard') {
@@ -101,27 +116,6 @@ export function NewFindingPage() {
         });
       } catch {
         // Best-effort cross-link note — don't block finding creation if this fails.
-      }
-    }
-
-    if (sourceContext?.kind === 'inspection' && questionId) {
-      try {
-        const inspection = await getInspection(sourceContext.id);
-        const response = inspection.responses.find((r) => r.questionId === questionId);
-        if (response?.potentialFinding) {
-          const input: ResponseInput = {
-            questionId: response.questionId,
-            sectionId: response.sectionId,
-            responseType: response.responseType,
-            value: response.value,
-            notes: response.notes,
-            evidenceNote: response.evidenceNote,
-            potentialFinding: { ...response.potentialFinding, status: 'Created' },
-          };
-          await saveResponses(sourceContext.id, [input], data.createdBy);
-        }
-      } catch {
-        // Best-effort — don't block finding creation if this fails.
       }
     }
 

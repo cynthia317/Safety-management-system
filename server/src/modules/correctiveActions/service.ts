@@ -1,6 +1,13 @@
 import { prisma } from '../../lib/prisma';
 import { nextCounterValue } from '../../lib/counters';
 import { queueNotification } from '../notifications/service';
+import {
+  validateFindingLink,
+  validateHazardLink,
+  validateInspectionLink,
+  validateRiskAssessmentLink,
+  sourceLinkErrorMessage,
+} from '../../lib/sourceLinks';
 import type {
   CorrectiveAction as PrismaCorrectiveAction,
   CorrectiveActionActivityEntry as PrismaCorrectiveActionActivityEntry,
@@ -48,6 +55,8 @@ function fromRow(row: PrismaCorrectiveAction): CorrectiveAction {
     hazardReferenceNumber: row.hazardReferenceNumber,
     inspectionId: row.inspectionId,
     inspectionReferenceNumber: row.inspectionReferenceNumber,
+    riskAssessmentId: row.riskAssessmentId,
+    riskAssessmentReferenceNumber: row.riskAssessmentReferenceNumber,
     externalSourceReference: row.externalSourceReference,
     createdBy: row.createdBy,
     assignedTo: row.assignedTo,
@@ -100,6 +109,8 @@ function evidenceFromRow(row: PrismaCorrectiveActionEvidenceItem): CorrectiveAct
 export interface ListCorrectiveActionsFilter {
   hazardId?: string;
   findingIds?: string[];
+  inspectionId?: string;
+  riskAssessmentId?: string;
   workplace?: { equals: string; mode: 'insensitive' };
 }
 
@@ -107,6 +118,8 @@ export async function listCorrectiveActions(filter: ListCorrectiveActionsFilter 
   const sourceConditions: Prisma.CorrectiveActionWhereInput[] = [];
   if (filter.hazardId) sourceConditions.push({ hazardId: filter.hazardId });
   if (filter.findingIds && filter.findingIds.length > 0) sourceConditions.push({ findingId: { in: filter.findingIds } });
+  if (filter.inspectionId) sourceConditions.push({ inspectionId: filter.inspectionId });
+  if (filter.riskAssessmentId) sourceConditions.push({ riskAssessmentId: filter.riskAssessmentId });
 
   const where: Prisma.CorrectiveActionWhereInput = {};
   if (sourceConditions.length > 0) where.OR = sourceConditions;
@@ -138,7 +151,38 @@ export async function getCorrectiveActionDetail(id: string): Promise<CorrectiveA
   };
 }
 
-export async function createCorrectiveAction(input: CreateCorrectiveActionInput): Promise<CorrectiveAction> {
+// Mutual exclusivity of findingId/hazardId/inspectionId/riskAssessmentId is already
+// enforced in schema.ts — at most one of these branches runs.
+async function resolveSourceType(input: CreateCorrectiveActionInput): Promise<CorrectiveActionSourceType | { error: string }> {
+  if (input.findingId) {
+    const result = await validateFindingLink(input.findingId, input.workplace);
+    if (typeof result === 'string') return { error: sourceLinkErrorMessage(result, 'finding') };
+    return 'Finding';
+  }
+  if (input.hazardId) {
+    const result = await validateHazardLink(input.hazardId, input.workplace);
+    if (typeof result === 'string') return { error: sourceLinkErrorMessage(result, 'hazard report') };
+    return 'Hazard Report';
+  }
+  if (input.inspectionId) {
+    const result = await validateInspectionLink(input.inspectionId, input.workplace);
+    if (typeof result === 'string') return { error: sourceLinkErrorMessage(result, 'inspection') };
+    return 'Inspection';
+  }
+  if (input.riskAssessmentId) {
+    const result = await validateRiskAssessmentLink(input.riskAssessmentId, input.workplace);
+    if (typeof result === 'string') return { error: sourceLinkErrorMessage(result, 'risk assessment') };
+    return 'Risk Assessment';
+  }
+  // No relational link — keep whatever the client selected (Manual Entry, Audit,
+  // Incident, or a legacy External reference), since those sources have no FK to check.
+  return input.sourceType;
+}
+
+export async function createCorrectiveAction(input: CreateCorrectiveActionInput): Promise<CorrectiveAction | { error: string }> {
+  const resolvedSourceType = await resolveSourceType(input);
+  if (typeof resolvedSourceType === 'object') return resolvedSourceType;
+
   const now = new Date();
   const { evidence, ...fields } = input;
 
@@ -155,6 +199,9 @@ export async function createCorrectiveAction(input: CreateCorrectiveActionInput)
       updatedAt: now,
       closedAt: null,
       ...fields,
+      // Server-derived from whichever FK is actually set, so the displayed source type can
+      // never drift from the real relational link — see resolveSourceType above.
+      sourceType: resolvedSourceType,
       activity: { create: { type: 'created', message: 'Corrective action created.', actor: input.createdBy, createdAt: now } },
       evidence: {
         create: evidence.map((item) => ({

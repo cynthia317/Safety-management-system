@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, FileSearch, Pencil, Wrench, X } from 'lucide-react';
+import { AlertTriangle, FileSearch, Pencil, ShieldAlert, Wrench, X } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
 import { EmptyState } from '../components/EmptyState';
@@ -21,7 +21,7 @@ import { addHazardComment, getHazard, updateHazard } from '../lib/hazardsApi';
 import { ApiError } from '../lib/api';
 import { useToast } from '../lib/ToastContext';
 import { useAuth } from '../lib/AuthContext';
-import { canCreateCorrectiveAction } from '../lib/roles';
+import { canCreateCorrectiveAction, canManageRiskAssessments } from '../lib/roles';
 import { HAZARD_STATUSES } from '../lib/hazardOptions';
 import type { HazardDetail, HazardStatus, UpdateHazardPayload } from '../lib/hazardTypes';
 
@@ -247,6 +247,12 @@ export function HazardDetailPage() {
               <FileSearch className="h-4 w-4" />
               Create Finding
             </Button>
+            {canManageRiskAssessments(role) && (
+              <Button variant="secondary" onClick={() => navigate(`/risk-assessments/new?hazardId=${hazard.id}`)}>
+                <ShieldAlert className="h-4 w-4" />
+                Create Risk Assessment
+              </Button>
+            )}
             {canCreateCorrectiveAction(role) && (
               <Button variant="secondary" onClick={() => navigate(`/corrective-actions/new?hazardId=${hazard.id}`)}>
                 <Wrench className="h-4 w-4" />

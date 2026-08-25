@@ -7,13 +7,15 @@ interface CorrectiveActionSourceBadgeProps {
 
 export function CorrectiveActionSourceBadge({ action }: CorrectiveActionSourceBadgeProps) {
   const linkTarget =
-    action.hazardId && action.hazardReferenceNumber
-      ? { to: `/hazards/${action.hazardId}`, ref: action.hazardReferenceNumber }
-      : action.findingId && action.findingReferenceNumber
-        ? { to: `/findings/${action.findingId}`, ref: action.findingReferenceNumber }
+    action.findingId && action.findingReferenceNumber
+      ? { to: `/findings/${action.findingId}`, ref: action.findingReferenceNumber }
+      : action.hazardId && action.hazardReferenceNumber
+        ? { to: `/hazards/${action.hazardId}`, ref: action.hazardReferenceNumber }
         : action.inspectionId && action.inspectionReferenceNumber
           ? { to: `/inspections/${action.inspectionId}`, ref: action.inspectionReferenceNumber }
-          : null;
+          : action.riskAssessmentId && action.riskAssessmentReferenceNumber
+            ? { to: `/risk-assessments/${action.riskAssessmentId}`, ref: action.riskAssessmentReferenceNumber }
+            : null;
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded border border-border bg-canvas-raised px-2 py-0.5 text-xs text-muted">

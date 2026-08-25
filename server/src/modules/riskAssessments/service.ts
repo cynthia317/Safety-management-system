@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { nextCounterValue } from '../../lib/counters';
+import { validateHazardLink, sourceLinkErrorMessage } from '../../lib/sourceLinks';
 import { computeRiskLevel, computeRiskScore, highestRiskLevel, type RiskLevel } from './riskMatrix';
 import type {
   RiskAssessment as PrismaRiskAssessment,
@@ -66,6 +67,8 @@ function fromRow(row: PrismaRiskAssessment, items: PrismaRiskAssessmentItem[]): 
     department: row.department,
     location: row.location,
     status: row.status as RiskAssessmentStatus,
+    hazardId: row.hazardId,
+    hazardReferenceNumber: row.hazardReferenceNumber,
     assessedBy: row.assessedBy,
     approvedBy: row.approvedBy,
     assessmentDate: row.assessmentDate.toISOString(),
@@ -110,9 +113,17 @@ function itemCreateData(inputs: RiskAssessmentItemInput[]) {
 
 const WITH_ITEMS = { orderBy: { order: 'asc' as const } };
 
-export async function listRiskAssessments(workplace?: { equals: string; mode: 'insensitive' }): Promise<RiskAssessment[]> {
+export interface ListRiskAssessmentsFilter {
+  hazardId?: string;
+  workplace?: { equals: string; mode: 'insensitive' };
+}
+
+export async function listRiskAssessments(filter: ListRiskAssessmentsFilter = {}): Promise<RiskAssessment[]> {
   const rows = await prisma.riskAssessment.findMany({
-    where: workplace ? { workplace } : undefined,
+    where: {
+      ...(filter.hazardId ? { hazardId: filter.hazardId } : {}),
+      ...(filter.workplace ? { workplace: filter.workplace } : {}),
+    },
     orderBy: { assessmentDate: 'desc' },
     include: { items: WITH_ITEMS },
   });
@@ -129,7 +140,12 @@ export async function getRiskAssessmentDetail(id: string): Promise<RiskAssessmen
   return { ...fromRow(row, row.items), activity: row.activity.map(activityFromRow) };
 }
 
-export async function createRiskAssessment(input: CreateRiskAssessmentInput): Promise<RiskAssessment> {
+export async function createRiskAssessment(input: CreateRiskAssessmentInput): Promise<RiskAssessment | { error: string }> {
+  if (input.hazardId) {
+    const result = await validateHazardLink(input.hazardId, input.workplace);
+    if (typeof result === 'string') return { error: sourceLinkErrorMessage(result, 'hazard report') };
+  }
+
   const now = new Date();
 
   const row = await prisma.riskAssessment.create({
@@ -141,6 +157,8 @@ export async function createRiskAssessment(input: CreateRiskAssessmentInput): Pr
       workplace: input.workplace,
       department: input.department,
       location: input.location,
+      hazardId: input.hazardId,
+      hazardReferenceNumber: input.hazardReferenceNumber,
       status: 'Draft',
       assessedBy: input.assessedBy,
       approvedBy: '',

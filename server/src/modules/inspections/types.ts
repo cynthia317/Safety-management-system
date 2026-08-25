@@ -36,7 +36,8 @@ export type InspectionActivityType =
   | 'saved'
   | 'submitted'
   | 'status_change'
-  | 'updated';
+  | 'updated'
+  | 'finding_created';
 
 export interface InspectionActivityEntry {
   id: string;

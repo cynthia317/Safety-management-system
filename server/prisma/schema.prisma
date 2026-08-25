@@ -63,9 +63,9 @@ model Workplace {
 }
 
 model Area {
-  id          String    @id @default(uuid())
+  id          String     @id @default(uuid())
   workplaceId String
-  workplace   Workplace @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
+  workplace   Workplace  @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
   name        String
   description String
   order       Int
@@ -90,8 +90,8 @@ model Location {
 // ---------------------------------------------------------------------------
 
 model HazardReport {
-  id                   String    @id @default(uuid())
-  referenceNumber      String    @unique
+  id                   String   @id @default(uuid())
+  referenceNumber      String   @unique
   title                String
   description          String
   reportType           String
@@ -108,9 +108,12 @@ model HazardReport {
   reportedAt           DateTime
   updatedAt            DateTime
 
-  activity HazardActivityEntry[]
-  comments HazardComment[]
-  evidence HazardEvidenceItem[]
+  activity          HazardActivityEntry[]
+  comments          HazardComment[]
+  evidence          HazardEvidenceItem[]
+  findings          Finding[]
+  correctiveActions CorrectiveAction[]
+  riskAssessments   RiskAssessment[]
 }
 
 model HazardActivityEntry {
@@ -155,8 +158,8 @@ model HazardEvidenceItem {
 // ---------------------------------------------------------------------------
 
 model Finding {
-  id                        String   @id @default(uuid())
-  referenceNumber           String   @unique
+  id                        String            @id @default(uuid())
+  referenceNumber           String            @unique
   title                     String
   description               String
   workplace                 String
@@ -166,24 +169,34 @@ model Finding {
   status                    String
   hazardId                  String?
   hazardReferenceNumber     String?
+  hazard                    HazardReport?     @relation(fields: [hazardId], references: [id], onDelete: SetNull)
   inspectionId              String?
   inspectionReferenceNumber String?
+  inspection                Inspection?       @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
+  // The specific inspection response this finding was generated from, when applicable —
+  // unique so the database itself guarantees at most one Finding per flagged response,
+  // which is what actually prevents duplicate findings on a repeated/racing request
+  // (see findings/service.ts#createFindingFromInspectionResponse), not just an app-level check.
+  questionResponseId        String?           @unique
+  questionResponse          QuestionResponse? @relation(fields: [questionResponseId], references: [id], onDelete: SetNull)
   createdBy                 String
   assignedTo                String
   dueDate                   DateTime
   createdAt                 DateTime
   updatedAt                 DateTime
 
-  activity FindingActivityEntry[]
-  comments FindingComment[]
+  activity          FindingActivityEntry[]
+  comments          FindingComment[]
+  correctiveActions CorrectiveAction[]
 
   @@index([hazardId])
+  @@index([inspectionId])
 }
 
 model FindingActivityEntry {
-  id        String  @id @default(uuid())
+  id        String   @id @default(uuid())
   findingId String
-  finding   Finding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  finding   Finding  @relation(fields: [findingId], references: [id], onDelete: Cascade)
   type      String
   message   String
   actor     String
@@ -193,9 +206,9 @@ model FindingActivityEntry {
 }
 
 model FindingComment {
-  id        String  @id @default(uuid())
+  id        String   @id @default(uuid())
   findingId String
-  finding   Finding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  finding   Finding  @relation(fields: [findingId], references: [id], onDelete: Cascade)
   author    String
   message   String
   createdAt DateTime
@@ -223,9 +236,9 @@ model InspectionTemplate {
 }
 
 model TemplateSection {
-  id          String              @id @default(uuid())
+  id          String             @id @default(uuid())
   templateId  String
-  template    InspectionTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  template    InspectionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   title       String
   description String
   order       Int
@@ -282,8 +295,10 @@ model Inspection {
   submittedAt          DateTime?
   reviewedAt           DateTime?
 
-  responses QuestionResponse[]
-  activity  InspectionActivityEntry[]
+  responses         QuestionResponse[]
+  activity          InspectionActivityEntry[]
+  findings          Finding[]
+  correctiveActions CorrectiveAction[]
 }
 
 model QuestionResponse {
@@ -299,6 +314,10 @@ model QuestionResponse {
   // { id, title, description, riskLevel, recommendation, immediateAction, status } | null
   potentialFinding Json?
   answeredAt       DateTime
+
+  // Reverse side of Finding.questionResponseId — no fields/references here, the FK lives
+  // on Finding since a response can produce at most one finding, not the other way round.
+  finding Finding?
 
   @@unique([inspectionId, questionId])
   @@index([inspectionId])
@@ -321,34 +340,44 @@ model InspectionActivityEntry {
 // ---------------------------------------------------------------------------
 
 model CorrectiveAction {
-  id                        String    @id @default(uuid())
-  referenceNumber           String    @unique
-  title                     String
-  description               String
-  workplace                 String
-  department                String
-  location                  String
-  priority                  String
-  status                    String
-  sourceType                String
-  findingId                 String?
-  findingReferenceNumber    String?
-  hazardId                  String?
-  hazardReferenceNumber     String?
-  inspectionId              String?
-  inspectionReferenceNumber String?
-  externalSourceReference   String?
-  createdBy                 String
-  assignedTo                String
-  dueDate                   DateTime
-  responseNote              String
-  respondedAt               DateTime?
-  evidenceNote              String
-  verifiedBy                String
-  verifiedAt                DateTime?
-  createdAt                 DateTime
-  updatedAt                 DateTime
-  closedAt                  DateTime?
+  id                            String          @id @default(uuid())
+  referenceNumber               String          @unique
+  title                         String
+  description                   String
+  workplace                     String
+  department                    String
+  location                      String
+  priority                      String
+  status                        String
+  sourceType                    String
+  // Exactly one of findingId/hazardId/inspectionId/riskAssessmentId may be set (enforced
+  // in correctiveActions/schema.ts + service.ts) — a corrective action has one origin,
+  // and a chain like Inspection -> Finding is resolved by following findingId ->
+  // Finding.inspectionId rather than duplicating the pointer here.
+  findingId                     String?
+  findingReferenceNumber        String?
+  finding                       Finding?        @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  hazardId                      String?
+  hazardReferenceNumber         String?
+  hazard                        HazardReport?   @relation(fields: [hazardId], references: [id], onDelete: SetNull)
+  inspectionId                  String?
+  inspectionReferenceNumber     String?
+  inspection                    Inspection?     @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
+  riskAssessmentId              String?
+  riskAssessmentReferenceNumber String?
+  riskAssessment                RiskAssessment? @relation(fields: [riskAssessmentId], references: [id], onDelete: SetNull)
+  externalSourceReference       String?
+  createdBy                     String
+  assignedTo                    String
+  dueDate                       DateTime
+  responseNote                  String
+  respondedAt                   DateTime?
+  evidenceNote                  String
+  verifiedBy                    String
+  verifiedAt                    DateTime?
+  createdAt                     DateTime
+  updatedAt                     DateTime
+  closedAt                      DateTime?
 
   activity CorrectiveActionActivityEntry[]
   comments CorrectiveActionComment[]
@@ -356,6 +385,8 @@ model CorrectiveAction {
 
   @@index([hazardId])
   @@index([findingId])
+  @@index([inspectionId])
+  @@index([riskAssessmentId])
 }
 
 model CorrectiveActionActivityEntry {
@@ -400,24 +431,32 @@ model CorrectiveActionEvidenceItem {
 // ---------------------------------------------------------------------------
 
 model RiskAssessment {
-  id             String    @id @default(uuid())
-  referenceNumber String   @unique
-  title          String
-  assessmentType String
-  description    String
-  workplace      String
-  department     String
-  location       String
-  status         String
-  assessedBy     String
-  approvedBy     String
-  assessmentDate DateTime
-  nextReviewDate DateTime?
-  createdAt      DateTime
-  updatedAt      DateTime
+  id                    String        @id @default(uuid())
+  referenceNumber       String        @unique
+  title                 String
+  assessmentType        String
+  description           String
+  workplace             String
+  department            String
+  location              String
+  status                String
+  // Optional — many risk assessments (routine, statutory, project-based) are proactive
+  // and never originate from a hazard report.
+  hazardId              String?
+  hazardReferenceNumber String?
+  hazard                HazardReport? @relation(fields: [hazardId], references: [id], onDelete: SetNull)
+  assessedBy            String
+  approvedBy            String
+  assessmentDate        DateTime
+  nextReviewDate        DateTime?
+  createdAt             DateTime
+  updatedAt             DateTime
 
-  items    RiskAssessmentItem[]
-  activity RiskAssessmentActivityEntry[]
+  items             RiskAssessmentItem[]
+  activity          RiskAssessmentActivityEntry[]
+  correctiveActions CorrectiveAction[]
+
+  @@index([hazardId])
 }
 
 model RiskAssessmentItem {
@@ -458,15 +497,15 @@ model RiskAssessmentActivityEntry {
 // ---------------------------------------------------------------------------
 
 model NotificationEvent {
-  id                      String    @id @default(uuid())
-  type                    String
-  recipient               String
-  subject                 String
-  message                 String
-  relatedEntityType       String
-  relatedEntityId         String
-  relatedEntityReference  String
-  createdAt               DateTime  @default(now())
-  deliveredAt             DateTime?
-  readAt                  DateTime?
+  id                     String    @id @default(uuid())
+  type                   String
+  recipient              String
+  subject                String
+  message                String
+  relatedEntityType      String
+  relatedEntityId        String
+  relatedEntityReference String
+  createdAt              DateTime  @default(now())
+  deliveredAt            DateTime?
+  readAt                 DateTime?
 }

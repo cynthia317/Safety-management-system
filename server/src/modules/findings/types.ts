@@ -16,6 +16,7 @@ export interface Finding {
   hazardReferenceNumber: string | null;
   inspectionId: string | null;
   inspectionReferenceNumber: string | null;
+  questionResponseId: string | null;
   createdBy: string;
   assignedTo: string;
   dueDate: string;
@@ -79,4 +80,13 @@ export interface UpdateFindingInput {
 export interface CreateFindingCommentInput {
   author: string;
   message: string;
+}
+
+export interface CreateFindingFromResponseInput {
+  title: string;
+  description: string;
+  riskLevel: RiskLevel;
+  assignedTo: string;
+  dueDate: string;
+  createdBy: string;
 }

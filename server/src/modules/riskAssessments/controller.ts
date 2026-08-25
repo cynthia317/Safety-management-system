@@ -23,7 +23,10 @@ function isSignOffTransition(fromStatus: string, toStatus: string): boolean {
 }
 
 export async function listRiskAssessmentsHandler(req: Request, res: Response): Promise<void> {
-  res.json({ data: await riskAssessmentService.listRiskAssessments(workplaceScopeWhere(req.user!)) });
+  const hazardId = typeof req.query.hazardId === 'string' ? req.query.hazardId : undefined;
+  res.json({
+    data: await riskAssessmentService.listRiskAssessments({ hazardId, workplace: workplaceScopeWhere(req.user!) }),
+  });
 }
 
 export async function getRiskAssessmentHandler(req: Request, res: Response): Promise<void> {
@@ -64,8 +67,13 @@ export async function createRiskAssessmentHandler(req: Request, res: Response): 
     return;
   }
 
-  const assessment = await riskAssessmentService.createRiskAssessment(value);
-  res.status(201).json({ data: assessment });
+  const result = await riskAssessmentService.createRiskAssessment(value);
+  if ('error' in result) {
+    res.status(400).json({ error: { code: 'INVALID_SOURCE_LINK', message: result.error } });
+    return;
+  }
+
+  res.status(201).json({ data: result });
 }
 
 export async function updateRiskAssessmentHandler(req: Request, res: Response): Promise<void> {

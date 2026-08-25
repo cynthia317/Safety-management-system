@@ -16,6 +16,7 @@ export interface Finding {
   hazardReferenceNumber: string | null;
   inspectionId: string | null;
   inspectionReferenceNumber: string | null;
+  questionResponseId: string | null;
   createdBy: string;
   assignedTo: string;
   dueDate: string;
