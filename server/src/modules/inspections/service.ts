@@ -112,8 +112,11 @@ async function toDetail(row: PrismaInspection): Promise<InspectionDetail> {
   };
 }
 
-export async function listInspections(): Promise<Inspection[]> {
-  const rows = await prisma.inspection.findMany({ orderBy: { createdAt: 'desc' } });
+export async function listInspections(workplace?: { equals: string; mode: 'insensitive' }): Promise<Inspection[]> {
+  const rows = await prisma.inspection.findMany({
+    where: workplace ? { workplace } : undefined,
+    orderBy: { createdAt: 'desc' },
+  });
   return rows.map(fromRow);
 }
 

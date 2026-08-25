@@ -110,8 +110,9 @@ function itemCreateData(inputs: RiskAssessmentItemInput[]) {
 
 const WITH_ITEMS = { orderBy: { order: 'asc' as const } };
 
-export async function listRiskAssessments(): Promise<RiskAssessment[]> {
+export async function listRiskAssessments(workplace?: { equals: string; mode: 'insensitive' }): Promise<RiskAssessment[]> {
   const rows = await prisma.riskAssessment.findMany({
+    where: workplace ? { workplace } : undefined,
     orderBy: { assessmentDate: 'desc' },
     include: { items: WITH_ITEMS },
   });

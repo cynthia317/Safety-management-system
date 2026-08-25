@@ -6,6 +6,7 @@ import type {
   CorrectiveActionActivityEntry as PrismaCorrectiveActionActivityEntry,
   CorrectiveActionComment as PrismaCorrectiveActionComment,
   CorrectiveActionEvidenceItem as PrismaCorrectiveActionEvidenceItem,
+  Prisma,
 } from '@prisma/client';
 import type {
   CorrectiveAction,
@@ -96,8 +97,25 @@ function evidenceFromRow(row: PrismaCorrectiveActionEvidenceItem): CorrectiveAct
   };
 }
 
-export async function listCorrectiveActions(): Promise<CorrectiveAction[]> {
-  const rows = await prisma.correctiveAction.findMany({ orderBy: { createdAt: 'desc' } });
+export interface ListCorrectiveActionsFilter {
+  hazardId?: string;
+  findingIds?: string[];
+  workplace?: { equals: string; mode: 'insensitive' };
+}
+
+export async function listCorrectiveActions(filter: ListCorrectiveActionsFilter = {}): Promise<CorrectiveAction[]> {
+  const sourceConditions: Prisma.CorrectiveActionWhereInput[] = [];
+  if (filter.hazardId) sourceConditions.push({ hazardId: filter.hazardId });
+  if (filter.findingIds && filter.findingIds.length > 0) sourceConditions.push({ findingId: { in: filter.findingIds } });
+
+  const where: Prisma.CorrectiveActionWhereInput = {};
+  if (sourceConditions.length > 0) where.OR = sourceConditions;
+  if (filter.workplace) where.workplace = filter.workplace;
+
+  const rows = await prisma.correctiveAction.findMany({
+    where: Object.keys(where).length > 0 ? where : undefined,
+    orderBy: { createdAt: 'desc' },
+  });
   return rows.map(fromRow);
 }
 
@@ -166,10 +184,14 @@ export async function createCorrectiveAction(input: CreateCorrectiveActionInput)
   return action;
 }
 
-export async function updateCorrectiveAction(id: string, input: UpdateCorrectiveActionInput): Promise<CorrectiveActionDetail | undefined> {
-  const existing = await prisma.correctiveAction.findUnique({ where: { id } });
-  if (!existing) return undefined;
-
+// Callers (controllers) always fetch and 404-check the record before calling this, so
+// `existing` is passed in rather than re-queried here — saves a redundant round trip to
+// the database on every single update request.
+export async function updateCorrectiveAction(
+  id: string,
+  existing: CorrectiveActionDetail,
+  input: UpdateCorrectiveActionInput,
+): Promise<CorrectiveActionDetail | undefined> {
   const now = new Date();
   const actor = input.actor && input.actor.length > 0 ? input.actor : 'Safety Officer';
   const nextStatus = input.status;
@@ -248,10 +270,8 @@ export async function updateCorrectiveAction(id: string, input: UpdateCorrective
   return getCorrectiveActionDetail(id);
 }
 
-export async function addComment(id: string, input: CreateCorrectiveActionCommentInput): Promise<CorrectiveActionComment | undefined> {
-  const existing = await prisma.correctiveAction.findUnique({ where: { id } });
-  if (!existing) return undefined;
-
+// Caller (controller) has already fetched and 404-checked the record.
+export async function addComment(id: string, input: CreateCorrectiveActionCommentInput): Promise<CorrectiveActionComment> {
   const now = new Date();
   const row = await prisma.correctiveActionComment.create({
     data: { correctiveActionId: id, author: input.author, message: input.message, createdAt: now },
@@ -264,10 +284,8 @@ export async function addComment(id: string, input: CreateCorrectiveActionCommen
   return commentFromRow(row);
 }
 
-export async function addEvidence(id: string, files: EvidenceInput[], uploadedBy: string): Promise<CorrectiveActionEvidenceItem[] | undefined> {
-  const existing = await prisma.correctiveAction.findUnique({ where: { id } });
-  if (!existing) return undefined;
-
+// Caller (controller) has already fetched and 404-checked the record.
+export async function addEvidence(id: string, files: EvidenceInput[], uploadedBy: string): Promise<CorrectiveActionEvidenceItem[]> {
   const now = new Date();
   const created = await prisma.$transaction(
     files.map((file) =>
@@ -300,12 +318,26 @@ export async function addEvidence(id: string, files: EvidenceInput[], uploadedBy
   return created.map(evidenceFromRow);
 }
 
-function isOverdue(action: CorrectiveAction, now: number): boolean {
-  return action.status !== 'Closed' && new Date(action.dueDate).getTime() < now;
+interface StatsRow {
+  status: CorrectiveActionStatus;
+  priority: RiskLevel;
+  department: string;
+  dueDate: Date;
+  closedAt: Date | null;
+  createdAt: Date;
 }
 
-export async function getCorrectiveActionStats(): Promise<CorrectiveActionStats> {
-  const all = (await prisma.correctiveAction.findMany()).map(fromRow);
+function isOverdue(action: StatsRow, now: number): boolean {
+  return action.status !== 'Closed' && action.dueDate.getTime() < now;
+}
+
+export async function getCorrectiveActionStats(workplace?: { equals: string; mode: 'insensitive' }): Promise<CorrectiveActionStats> {
+  // Aggregation only needs these six columns, not the full row (title/description/notes
+  // etc.) — selecting just these cuts the data pulled from and parsed off every row.
+  const all = (await prisma.correctiveAction.findMany({
+    where: workplace ? { workplace } : undefined,
+    select: { status: true, priority: true, department: true, dueDate: true, closedAt: true, createdAt: true },
+  })) as StatsRow[];
   const now = Date.now();
   const nowDate = new Date();
 

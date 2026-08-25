@@ -20,10 +20,10 @@ export function FindingRelatedRecordsPanel({ finding }: FindingRelatedRecordsPan
   useEffect(() => {
     let cancelled = false;
 
-    listCorrectiveActions()
-      .then((all) => {
+    listCorrectiveActions({ findingId: [finding.id] })
+      .then((linkedActions) => {
         if (cancelled) return;
-        setActions(all.filter((a) => a.findingId === finding.id));
+        setActions(linkedActions);
       })
       .catch(() => {
         if (!cancelled) setActions([]);

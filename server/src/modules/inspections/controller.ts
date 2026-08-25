@@ -1,9 +1,18 @@
 import type { Request, Response } from 'express';
 import * as inspectionService from './service';
 import { validateCreateInspection, validateSaveResponses, validateUpdateInspection } from './schema';
+import { canAccessRecordWorkplace, canManageInspections, workplaceScopeWhere } from '../auth/permissions';
 
-export async function listInspectionsHandler(_req: Request, res: Response): Promise<void> {
-  res.json({ data: await inspectionService.listInspections() });
+function forbidden(res: Response, message: string): void {
+  res.status(403).json({ error: { code: 'FORBIDDEN', message } });
+}
+
+function forbiddenWorkplace(res: Response): void {
+  forbidden(res, 'You do not have access to this workplace.');
+}
+
+export async function listInspectionsHandler(req: Request, res: Response): Promise<void> {
+  res.json({ data: await inspectionService.listInspections(workplaceScopeWhere(req.user!)) });
 }
 
 export async function getInspectionHandler(req: Request, res: Response): Promise<void> {
@@ -16,16 +25,31 @@ export async function getInspectionHandler(req: Request, res: Response): Promise
     return;
   }
 
+  if (!canAccessRecordWorkplace(req.user!, inspection.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
   res.json({ data: inspection });
 }
 
 export async function createInspectionHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageInspections(req.user!.role)) {
+    forbidden(res, 'Your role cannot schedule inspections.');
+    return;
+  }
+
   const { errors, value } = validateCreateInspection(req.body);
 
   if (errors) {
     res.status(400).json({
       error: { code: 'VALIDATION_ERROR', message: 'Please correct the highlighted fields.', details: errors },
     });
+    return;
+  }
+
+  if (!canAccessRecordWorkplace(req.user!, value.workplace)) {
+    forbiddenWorkplace(res);
     return;
   }
 
@@ -39,7 +63,16 @@ export async function createInspectionHandler(req: Request, res: Response): Prom
   res.status(201).json({ data: result });
 }
 
+// Editing inspection metadata (site/date/inspectors/purpose) and moving it to
+// Reviewed/Closed is a supervisory action — conducting one (answering questions) goes
+// through saveResponsesHandler/submitInspectionHandler below instead, which stay open to
+// any workplace-scoped user, matching "Workers can participate in permitted inspections."
 export async function updateInspectionHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageInspections(req.user!.role)) {
+    forbidden(res, 'Your role cannot edit or review inspections.');
+    return;
+  }
+
   const id = req.params.id as string;
   const existing = await inspectionService.getInspectionDetail(id);
 
@@ -50,12 +83,22 @@ export async function updateInspectionHandler(req: Request, res: Response): Prom
     return;
   }
 
+  if (!canAccessRecordWorkplace(req.user!, existing.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
   const { errors, value } = validateUpdateInspection(req.body);
 
   if (errors) {
     res.status(400).json({
       error: { code: 'VALIDATION_ERROR', message: 'Please correct the highlighted fields.', details: errors },
     });
+    return;
+  }
+
+  if (value.workplace !== undefined && !canAccessRecordWorkplace(req.user!, value.workplace)) {
+    forbiddenWorkplace(res);
     return;
   }
 
@@ -71,6 +114,11 @@ export async function saveResponsesHandler(req: Request, res: Response): Promise
     res.status(404).json({
       error: { code: 'NOT_FOUND', message: `Inspection "${id}" was not found.` },
     });
+    return;
+  }
+
+  if (!canAccessRecordWorkplace(req.user!, existing.workplace)) {
+    forbiddenWorkplace(res);
     return;
   }
 
@@ -118,9 +166,14 @@ export async function submitInspectionHandler(req: Request, res: Response): Prom
     return;
   }
 
-  const actorRaw = typeof req.body?.actor === 'string' && req.body.actor.trim().length > 0 ? req.body.actor.trim() : existing.leadInspector;
+  if (!canAccessRecordWorkplace(req.user!, existing.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
 
-  const result = await inspectionService.submitInspection(id, actorRaw);
+  // Actor is always the authenticated caller — every other module derives it from the
+  // session rather than trusting the client, and submit shouldn't be the one exception.
+  const result = await inspectionService.submitInspection(id, req.user!.name);
 
   if (!result) {
     res.status(404).json({

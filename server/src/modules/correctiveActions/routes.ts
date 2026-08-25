@@ -8,13 +8,14 @@ import {
   listCorrectiveActionsHandler,
   updateCorrectiveActionHandler,
 } from './controller';
+import { writeLimiter } from '../../lib/rateLimiters';
 
 export const correctiveActionsRouter = Router();
 
 correctiveActionsRouter.get('/', listCorrectiveActionsHandler);
 correctiveActionsRouter.get('/stats', getCorrectiveActionStatsHandler);
 correctiveActionsRouter.get('/:id', getCorrectiveActionHandler);
-correctiveActionsRouter.post('/', createCorrectiveActionHandler);
+correctiveActionsRouter.post('/', writeLimiter, createCorrectiveActionHandler);
 correctiveActionsRouter.patch('/:id', updateCorrectiveActionHandler);
-correctiveActionsRouter.post('/:id/comments', addCommentHandler);
-correctiveActionsRouter.post('/:id/evidence', addEvidenceHandler);
+correctiveActionsRouter.post('/:id/comments', writeLimiter, addCommentHandler);
+correctiveActionsRouter.post('/:id/evidence', writeLimiter, addEvidenceHandler);

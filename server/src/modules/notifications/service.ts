@@ -48,6 +48,11 @@ export async function listNotifications(recipient?: string): Promise<Notificatio
   return rows.map(fromRow);
 }
 
+export async function getNotificationById(id: string): Promise<NotificationEvent | undefined> {
+  const row = await prisma.notificationEvent.findUnique({ where: { id } });
+  return row ? fromRow(row) : undefined;
+}
+
 export async function markNotificationRead(id: string): Promise<NotificationEvent | undefined> {
   const existing = await prisma.notificationEvent.findUnique({ where: { id } });
   if (!existing) return undefined;

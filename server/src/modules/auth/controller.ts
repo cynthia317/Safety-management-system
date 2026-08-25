@@ -139,3 +139,7 @@ export function meHandler(req: Request, res: Response): void {
 export async function listUsersHandler(_req: Request, res: Response): Promise<void> {
   res.json({ data: await authService.listUsers() });
 }
+
+export async function listAssignableUsersHandler(req: Request, res: Response): Promise<void> {
+  res.json({ data: await authService.listAssignableUsers(req.user!) });
+}

@@ -15,6 +15,7 @@ import { riskAssessmentsRouter } from './modules/riskAssessments/routes';
 import { notificationsRouter } from './modules/notifications/routes';
 import { authRouter, usersRouter } from './modules/auth/routes';
 import { requireAuth } from './modules/auth/middleware';
+import { verifyOrigin } from './middleware/csrf';
 
 export function createApp(): Express {
   const app = express();
@@ -67,6 +68,10 @@ export function createApp(): Express {
       timestamp: new Date().toISOString(),
     });
   });
+
+  // Applies to every route below (including auth) — CSRF defense belongs ahead of
+  // everything that can mutate state, not just the session-authenticated routes.
+  app.use(verifyOrigin);
 
   app.use('/api/auth', authRouter);
   app.use('/api/users', usersRouter);

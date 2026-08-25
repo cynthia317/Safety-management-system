@@ -1,9 +1,29 @@
 import type { Request, Response } from 'express';
 import * as riskAssessmentService from './service';
 import { validateCreateRiskAssessment, validateUpdateRiskAssessment } from './schema';
+import {
+  canAccessRecordWorkplace,
+  canApproveRiskAssessment,
+  canManageRiskAssessments,
+  workplaceScopeWhere,
+} from '../auth/permissions';
 
-export async function listRiskAssessmentsHandler(_req: Request, res: Response): Promise<void> {
-  res.json({ data: await riskAssessmentService.listRiskAssessments() });
+function forbidden(res: Response, message: string): void {
+  res.status(403).json({ error: { code: 'FORBIDDEN', message } });
+}
+
+function forbiddenWorkplace(res: Response): void {
+  forbidden(res, 'You do not have access to this workplace.');
+}
+
+// Entering or leaving Approved/Closed is a sign-off — everything else (draft edits,
+// moving Draft -> Under Review to request one) is ordinary authoring work.
+function isSignOffTransition(fromStatus: string, toStatus: string): boolean {
+  return toStatus === 'Approved' || toStatus === 'Closed' || fromStatus === 'Approved' || fromStatus === 'Closed';
+}
+
+export async function listRiskAssessmentsHandler(req: Request, res: Response): Promise<void> {
+  res.json({ data: await riskAssessmentService.listRiskAssessments(workplaceScopeWhere(req.user!)) });
 }
 
 export async function getRiskAssessmentHandler(req: Request, res: Response): Promise<void> {
@@ -16,10 +36,20 @@ export async function getRiskAssessmentHandler(req: Request, res: Response): Pro
     return;
   }
 
+  if (!canAccessRecordWorkplace(req.user!, assessment.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
   res.json({ data: assessment });
 }
 
 export async function createRiskAssessmentHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageRiskAssessments(req.user!.role)) {
+    forbidden(res, 'Your role cannot create risk assessments.');
+    return;
+  }
+
   const { errors, value } = validateCreateRiskAssessment(req.body);
 
   if (errors) {
@@ -29,11 +59,21 @@ export async function createRiskAssessmentHandler(req: Request, res: Response): 
     return;
   }
 
+  if (!canAccessRecordWorkplace(req.user!, value.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
   const assessment = await riskAssessmentService.createRiskAssessment(value);
   res.status(201).json({ data: assessment });
 }
 
 export async function updateRiskAssessmentHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageRiskAssessments(req.user!.role)) {
+    forbidden(res, 'Your role cannot edit risk assessments.');
+    return;
+  }
+
   const id = req.params.id as string;
   const existing = await riskAssessmentService.getRiskAssessmentDetail(id);
 
@@ -44,12 +84,32 @@ export async function updateRiskAssessmentHandler(req: Request, res: Response): 
     return;
   }
 
+  if (!canAccessRecordWorkplace(req.user!, existing.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
   const { errors, value } = validateUpdateRiskAssessment(req.body);
 
   if (errors) {
     res.status(400).json({
       error: { code: 'VALIDATION_ERROR', message: 'Please correct the highlighted fields.', details: errors },
     });
+    return;
+  }
+
+  if (value.workplace !== undefined && !canAccessRecordWorkplace(req.user!, value.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
+  if (
+    value.status !== undefined &&
+    value.status !== existing.status &&
+    isSignOffTransition(existing.status, value.status) &&
+    !canApproveRiskAssessment(req.user!.role)
+  ) {
+    forbidden(res, 'Your role cannot approve or close risk assessments.');
     return;
   }
 

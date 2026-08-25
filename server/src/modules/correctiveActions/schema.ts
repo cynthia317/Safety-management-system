@@ -31,6 +31,29 @@ export const CORRECTIVE_ACTION_SOURCE_TYPES: CorrectiveActionSourceType[] = [
 const MAX_EVIDENCE_ITEMS = 10;
 const MAX_EVIDENCE_BYTES = 15 * 1024 * 1024;
 
+// Corrective action evidence also accepts PDFs and Word documents (the upload UI offers
+// those in addition to images) — still an allow-list, not "anything goes".
+const ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+
+// The client-reported `fileSize` was previously trusted as-is — a caller could declare
+// any size while sending a much larger `dataUrl`. This decodes the actual base64 payload
+// length instead, so the real size is what gets checked against the limit.
+function decodedByteLength(dataUrl: string): number {
+  const commaIndex = dataUrl.indexOf(',');
+  const base64Part = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : '';
+  if (base64Part.length === 0) return 0;
+  const padding = base64Part.endsWith('==') ? 2 : base64Part.endsWith('=') ? 1 : 0;
+  return Math.floor((base64Part.length * 3) / 4) - padding;
+}
+
 export type ValidationErrors = Record<string, string>;
 
 export interface ValidationResult<T> {
@@ -62,10 +85,13 @@ function sanitizeEvidence(input: unknown): EvidenceInput[] {
     if (
       isNonEmptyString(item.fileName) &&
       isNonEmptyString(item.mimeType) &&
+      ALLOWED_MIME_TYPES.includes(item.mimeType.trim().toLowerCase()) &&
       isNonEmptyString(item.dataUrl) &&
+      item.dataUrl.startsWith('data:') &&
       typeof item.fileSize === 'number' &&
       item.fileSize > 0 &&
-      item.fileSize <= MAX_EVIDENCE_BYTES
+      item.fileSize <= MAX_EVIDENCE_BYTES &&
+      decodedByteLength(item.dataUrl) <= MAX_EVIDENCE_BYTES
     ) {
       items.push({
         fileName: item.fileName.trim(),

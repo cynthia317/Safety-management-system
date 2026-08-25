@@ -1,6 +1,13 @@
 import type { Request, Response } from 'express';
 import * as workplaceService from './service';
 import { validateCreateWorkplace, validateUpdateWorkplace } from './schema';
+import { canManageWorkplaces } from '../auth/permissions';
+
+function forbidden(res: Response): void {
+  res.status(403).json({
+    error: { code: 'FORBIDDEN', message: 'Your role cannot manage workplaces.' },
+  });
+}
 
 export async function listWorkplacesHandler(_req: Request, res: Response): Promise<void> {
   res.json({ data: await workplaceService.listWorkplaces() });
@@ -20,6 +27,11 @@ export async function getWorkplaceHandler(req: Request, res: Response): Promise<
 }
 
 export async function createWorkplaceHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageWorkplaces(req.user!.role)) {
+    forbidden(res);
+    return;
+  }
+
   const { errors, value } = validateCreateWorkplace(req.body);
 
   if (errors) {
@@ -34,6 +46,11 @@ export async function createWorkplaceHandler(req: Request, res: Response): Promi
 }
 
 export async function updateWorkplaceHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageWorkplaces(req.user!.role)) {
+    forbidden(res);
+    return;
+  }
+
   const id = req.params.id as string;
   const existing = await workplaceService.getWorkplace(id);
 

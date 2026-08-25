@@ -1,6 +1,13 @@
 import type { Request, Response } from 'express';
 import * as templateService from './service';
 import { validateCreateTemplate, validateUpdateTemplate } from './schema';
+import { canManageInspectionTemplates } from '../auth/permissions';
+
+function forbidden(res: Response): void {
+  res.status(403).json({
+    error: { code: 'FORBIDDEN', message: 'Your role cannot manage inspection templates.' },
+  });
+}
 
 export async function listTemplatesHandler(_req: Request, res: Response): Promise<void> {
   res.json({ data: await templateService.listTemplates() });
@@ -20,6 +27,11 @@ export async function getTemplateHandler(req: Request, res: Response): Promise<v
 }
 
 export async function createTemplateHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageInspectionTemplates(req.user!.role)) {
+    forbidden(res);
+    return;
+  }
+
   const { errors, value } = validateCreateTemplate(req.body);
 
   if (errors) {
@@ -34,6 +46,11 @@ export async function createTemplateHandler(req: Request, res: Response): Promis
 }
 
 export async function updateTemplateHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageInspectionTemplates(req.user!.role)) {
+    forbidden(res);
+    return;
+  }
+
   const id = req.params.id as string;
   const existing = await templateService.getTemplate(id);
 
@@ -58,6 +75,11 @@ export async function updateTemplateHandler(req: Request, res: Response): Promis
 }
 
 export async function duplicateTemplateHandler(req: Request, res: Response): Promise<void> {
+  if (!canManageInspectionTemplates(req.user!.role)) {
+    forbidden(res);
+    return;
+  }
+
   const id = req.params.id as string;
   const duplicate = await templateService.duplicateTemplate(id);
 

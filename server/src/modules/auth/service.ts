@@ -35,14 +35,47 @@ export async function getUser(id: string): Promise<User | undefined> {
   return row ? fromRow(row) : undefined;
 }
 
+// This runs on every authenticated request (requireAuth), so it selects only the columns
+// PublicUser needs — skipping passwordHash avoids fetching/serializing it on the hottest
+// query path in the app, unlike getUser() which callers that verify a password still need.
 export async function getPublicUser(id: string): Promise<PublicUser | undefined> {
-  const user = await getUser(id);
-  return user ? toPublic(user) : undefined;
+  const row = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, name: true, email: true, role: true, workplace: true, isActive: true, createdAt: true },
+  });
+  if (!row) return undefined;
+  return { ...row, role: row.role as Role, createdAt: row.createdAt.toISOString() };
 }
 
 export async function listUsers(): Promise<PublicUser[]> {
   const rows = await prisma.user.findMany({ orderBy: { name: 'asc' } });
   return rows.map((row) => toPublic(fromRow(row)));
+}
+
+export interface AssignableUser {
+  id: string;
+  name: string;
+  role: Role;
+}
+
+// Least-privilege directory for "assign to" / "responsible person" pickers, used by every
+// non-admin workflow (corrective actions, findings, hazards, inspections). Deliberately
+// omits email/workplace/isActive/createdAt — those pickers only ever render `.name` and
+// `.role` (see client/src/lib/useUsers.ts and its callers), so there is no reason to send
+// the rest to every authenticated user the way the full `listUsers()` directory does.
+// Scoped to the requester's own workplace so a user can't harvest another site's roster
+// through the assignment dropdown; Admin (organisation-wide access) sees everyone.
+export async function listAssignableUsers(requestingUser: PublicUser): Promise<AssignableUser[]> {
+  const isAdmin = requestingUser.role === 'Admin';
+  const rows = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      ...(isAdmin ? {} : { workplace: { equals: requestingUser.workplace, mode: 'insensitive' } }),
+    },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, role: true },
+  });
+  return rows.map((row) => ({ id: row.id, name: row.name, role: row.role as Role }));
 }
 
 export function verifyPassword(user: User, password: string): boolean {

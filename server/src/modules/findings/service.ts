@@ -61,8 +61,19 @@ function commentFromRow(row: PrismaFindingComment): FindingComment {
   return { id: row.id, findingId: row.findingId, author: row.author, message: row.message, createdAt: row.createdAt.toISOString() };
 }
 
-export async function listFindings(): Promise<Finding[]> {
-  const rows = await prisma.finding.findMany({ orderBy: { createdAt: 'desc' } });
+export interface ListFindingsFilter {
+  hazardId?: string;
+  workplace?: { equals: string; mode: 'insensitive' };
+}
+
+export async function listFindings(filter: ListFindingsFilter = {}): Promise<Finding[]> {
+  const rows = await prisma.finding.findMany({
+    where: {
+      ...(filter.hazardId ? { hazardId: filter.hazardId } : {}),
+      ...(filter.workplace ? { workplace: filter.workplace } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+  });
   return rows.map(fromRow);
 }
 
@@ -93,10 +104,13 @@ export async function createFinding(input: CreateFindingInput): Promise<Finding>
   return fromRow(row);
 }
 
-export async function updateFinding(id: string, input: UpdateFindingInput): Promise<FindingDetail | undefined> {
-  const existing = await prisma.finding.findUnique({ where: { id } });
-  if (!existing) return undefined;
-
+// Caller (controller) has already fetched and 404-checked the record, so `existing` is
+// passed in rather than re-queried here — saves a redundant round trip on every update.
+export async function updateFinding(
+  id: string,
+  existing: FindingDetail,
+  input: UpdateFindingInput,
+): Promise<FindingDetail | undefined> {
   const now = new Date();
   const actor = input.actor && input.actor.length > 0 ? input.actor : 'Safety Officer';
   const nextStatus = input.status;
@@ -132,10 +146,8 @@ export async function updateFinding(id: string, input: UpdateFindingInput): Prom
   return getFindingDetail(id);
 }
 
-export async function addComment(id: string, input: CreateFindingCommentInput): Promise<FindingComment | undefined> {
-  const existing = await prisma.finding.findUnique({ where: { id } });
-  if (!existing) return undefined;
-
+// Caller (controller) has already fetched and 404-checked the record.
+export async function addComment(id: string, input: CreateFindingCommentInput): Promise<FindingComment> {
   const now = new Date();
   const row = await prisma.findingComment.create({ data: { findingId: id, author: input.author, message: input.message, createdAt: now } });
 

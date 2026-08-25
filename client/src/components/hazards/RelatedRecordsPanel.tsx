@@ -22,18 +22,14 @@ export function RelatedRecordsPanel({ hazardId }: RelatedRecordsPanelProps) {
   useEffect(() => {
     let cancelled = false;
 
-    listFindings()
-      .then((all) => {
+    listFindings({ hazardId })
+      .then((linkedFindings) => {
         if (cancelled) return;
-        const linkedFindings = all.filter((f) => f.hazardId === hazardId);
         setFindings(linkedFindings);
 
-        const findingIds = new Set(linkedFindings.map((f) => f.id));
-        return listCorrectiveActions().then((allActions) => {
+        const findingIds = linkedFindings.map((f) => f.id);
+        return listCorrectiveActions({ hazardId, findingId: findingIds }).then((linkedActions) => {
           if (cancelled) return;
-          const linkedActions = allActions.filter(
-            (a) => a.hazardId === hazardId || (a.findingId && findingIds.has(a.findingId)),
-          );
           setActions(linkedActions);
         });
       })

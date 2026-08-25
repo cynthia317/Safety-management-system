@@ -1,6 +1,11 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './layout/AppLayout';
 import { AuthGuard } from './layout/AuthGuard';
+import { RequireRole } from './layout/RequireRole';
+import { ROLES, type Role } from './lib/roles';
+
+const WORKPLACE_MANAGER_ROLES: Role[] = ['Admin'];
+const TEMPLATE_MANAGER_ROLES: Role[] = ROLES.filter((r) => r !== 'Worker');
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -75,8 +80,22 @@ function App() {
           <Route path="/inspections/:id" element={<InspectionDetailPage />} />
 
           <Route path="/inspection-templates" element={<InspectionTemplateListPage />} />
-          <Route path="/inspection-templates/new" element={<NewInspectionTemplatePage />} />
-          <Route path="/inspection-templates/:id/edit" element={<EditInspectionTemplatePage />} />
+          <Route
+            path="/inspection-templates/new"
+            element={
+              <RequireRole roles={TEMPLATE_MANAGER_ROLES}>
+                <NewInspectionTemplatePage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/inspection-templates/:id/edit"
+            element={
+              <RequireRole roles={TEMPLATE_MANAGER_ROLES}>
+                <EditInspectionTemplatePage />
+              </RequireRole>
+            }
+          />
           <Route path="/inspection-templates/:id" element={<InspectionTemplateDetailPage />} />
 
           <Route path="/corrective-actions" element={<CorrectiveActionListPage />} />
@@ -84,8 +103,22 @@ function App() {
           <Route path="/corrective-actions/:id" element={<CorrectiveActionDetailPage />} />
 
           <Route path="/workplaces" element={<WorkplaceListPage />} />
-          <Route path="/workplaces/new" element={<NewWorkplacePage />} />
-          <Route path="/workplaces/:id/edit" element={<EditWorkplacePage />} />
+          <Route
+            path="/workplaces/new"
+            element={
+              <RequireRole roles={WORKPLACE_MANAGER_ROLES}>
+                <NewWorkplacePage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/workplaces/:id/edit"
+            element={
+              <RequireRole roles={WORKPLACE_MANAGER_ROLES}>
+                <EditWorkplacePage />
+              </RequireRole>
+            }
+          />
           <Route path="/workplaces/:id" element={<WorkplaceDetailPage />} />
 
           <Route path="/risk-assessments" element={<RiskAssessmentListPage />} />

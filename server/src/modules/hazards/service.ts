@@ -77,8 +77,15 @@ function evidenceFromRow(row: PrismaHazardEvidenceItem): HazardEvidenceItem {
   };
 }
 
-export async function listHazards(): Promise<HazardReport[]> {
-  const rows = await prisma.hazardReport.findMany({ orderBy: { reportedAt: 'desc' } });
+export interface ListHazardsFilter {
+  workplace?: { equals: string; mode: 'insensitive' };
+}
+
+export async function listHazards(filter: ListHazardsFilter = {}): Promise<HazardReport[]> {
+  const rows = await prisma.hazardReport.findMany({
+    where: filter.workplace ? { workplace: filter.workplace } : undefined,
+    orderBy: { reportedAt: 'desc' },
+  });
   return rows.map(fromRow);
 }
 
@@ -131,10 +138,13 @@ export async function createHazard(input: CreateHazardInput): Promise<HazardRepo
   return fromRow(row);
 }
 
-export async function updateHazard(id: string, input: UpdateHazardInput): Promise<HazardDetail | undefined> {
-  const existing = await prisma.hazardReport.findUnique({ where: { id } });
-  if (!existing) return undefined;
-
+// Caller (controller) has already fetched and 404-checked the record, so `existing` is
+// passed in rather than re-queried here — saves a redundant round trip on every update.
+export async function updateHazard(
+  id: string,
+  existing: HazardDetail,
+  input: UpdateHazardInput,
+): Promise<HazardDetail | undefined> {
   const now = new Date();
   const actor = input.actor && input.actor.length > 0 ? input.actor : 'Safety Officer';
   const nextStatus = input.status;
@@ -173,10 +183,8 @@ export async function updateHazard(id: string, input: UpdateHazardInput): Promis
   return getHazardDetail(id);
 }
 
-export async function addComment(id: string, input: CreateCommentInput): Promise<HazardComment | undefined> {
-  const existing = await prisma.hazardReport.findUnique({ where: { id } });
-  if (!existing) return undefined;
-
+// Caller (controller) has already fetched and 404-checked the record.
+export async function addComment(id: string, input: CreateCommentInput): Promise<HazardComment> {
   const now = new Date();
   const row = await prisma.hazardComment.create({ data: { hazardId: id, author: input.author, message: input.message, createdAt: now } });
 

@@ -176,6 +176,8 @@ model Finding {
 
   activity FindingActivityEntry[]
   comments FindingComment[]
+
+  @@index([hazardId])
 }
 
 model FindingActivityEntry {
@@ -351,6 +353,9 @@ model CorrectiveAction {
   activity CorrectiveActionActivityEntry[]
   comments CorrectiveActionComment[]
   evidence CorrectiveActionEvidenceItem[]
+
+  @@index([hazardId])
+  @@index([findingId])
 }
 
 model CorrectiveActionActivityEntry {

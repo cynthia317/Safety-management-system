@@ -5,8 +5,9 @@ interface DataEnvelope<T> {
   data: T;
 }
 
-export function listFindings(): Promise<Finding[]> {
-  return apiRequest<DataEnvelope<Finding[]>>('/api/findings').then((res) => res.data);
+export function listFindings(filter?: { hazardId?: string }): Promise<Finding[]> {
+  const query = filter?.hazardId ? `?hazardId=${encodeURIComponent(filter.hazardId)}` : '';
+  return apiRequest<DataEnvelope<Finding[]>>(`/api/findings${query}`).then((res) => res.data);
 }
 
 export function getFinding(id: string): Promise<FindingDetail> {

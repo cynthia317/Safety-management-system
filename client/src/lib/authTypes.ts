@@ -10,6 +10,13 @@ export interface User {
   createdAt: string;
 }
 
+/** Least-privilege shape for "assign to" pickers — see GET /api/users/assignable. */
+export interface AssignableUser {
+  id: string;
+  name: string;
+  role: Role;
+}
+
 export interface LoginPayload {
   email: string;
   password: string;

@@ -13,8 +13,14 @@ interface DataEnvelope<T> {
   data: T;
 }
 
-export function listCorrectiveActions(): Promise<CorrectiveAction[]> {
-  return apiRequest<DataEnvelope<CorrectiveAction[]>>('/api/corrective-actions').then((res) => res.data);
+export function listCorrectiveActions(filter?: { hazardId?: string; findingId?: string[] }): Promise<CorrectiveAction[]> {
+  const params = new URLSearchParams();
+  if (filter?.hazardId) params.set('hazardId', filter.hazardId);
+  for (const id of filter?.findingId ?? []) params.append('findingId', id);
+  const query = params.toString();
+  return apiRequest<DataEnvelope<CorrectiveAction[]>>(`/api/corrective-actions${query ? `?${query}` : ''}`).then(
+    (res) => res.data,
+  );
 }
 
 export function getCorrectiveActionStats(): Promise<CorrectiveActionStats> {

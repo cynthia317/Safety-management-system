@@ -1,9 +1,34 @@
 import type { Request, Response } from 'express';
 import * as actionService from './service';
 import { validateAddEvidence, validateComment, validateCreateCorrectiveAction, validateUpdateCorrectiveAction } from './schema';
+import {
+  canAccessRecordWorkplace,
+  canAssignCorrectiveAction,
+  canCloseCorrectiveAction,
+  canCreateCorrectiveAction,
+  canEditCorrectiveAction,
+  canVerifyCorrectiveAction,
+  workplaceScopeWhere,
+} from '../auth/permissions';
 
-export async function listCorrectiveActionsHandler(_req: Request, res: Response): Promise<void> {
-  res.json({ data: await actionService.listCorrectiveActions() });
+function forbidden(res: Response, message = 'You do not have permission to do this.'): void {
+  res.status(403).json({ error: { code: 'FORBIDDEN', message } });
+}
+
+function forbiddenWorkplace(res: Response): void {
+  forbidden(res, 'You do not have access to this workplace.');
+}
+
+export async function listCorrectiveActionsHandler(req: Request, res: Response): Promise<void> {
+  const hazardId = typeof req.query.hazardId === 'string' ? req.query.hazardId : undefined;
+  const findingIdParam = req.query.findingId;
+  const findingIds = Array.isArray(findingIdParam)
+    ? findingIdParam.filter((v): v is string => typeof v === 'string')
+    : typeof findingIdParam === 'string'
+      ? [findingIdParam]
+      : undefined;
+
+  res.json({ data: await actionService.listCorrectiveActions({ hazardId, findingIds, workplace: workplaceScopeWhere(req.user!) }) });
 }
 
 export async function getCorrectiveActionHandler(req: Request, res: Response): Promise<void> {
@@ -16,10 +41,20 @@ export async function getCorrectiveActionHandler(req: Request, res: Response): P
     return;
   }
 
+  if (!canAccessRecordWorkplace(req.user!, action.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
   res.json({ data: action });
 }
 
 export async function createCorrectiveActionHandler(req: Request, res: Response): Promise<void> {
+  if (!canCreateCorrectiveAction(req.user!.role)) {
+    forbidden(res, 'Your role cannot create corrective actions.');
+    return;
+  }
+
   const { errors, value } = validateCreateCorrectiveAction(req.body);
 
   if (errors) {
@@ -28,6 +63,15 @@ export async function createCorrectiveActionHandler(req: Request, res: Response)
     });
     return;
   }
+
+  if (!canAccessRecordWorkplace(req.user!, value.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
+  // The creator is always the authenticated caller, never a client-supplied name —
+  // otherwise anyone could attribute a corrective action to someone else in the audit trail.
+  value.createdBy = req.user!.name;
 
   const action = await actionService.createCorrectiveAction(value);
   res.status(201).json({ data: action });
@@ -44,6 +88,11 @@ export async function updateCorrectiveActionHandler(req: Request, res: Response)
     return;
   }
 
+  if (!canAccessRecordWorkplace(req.user!, existing.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
   const { errors, value } = validateUpdateCorrectiveAction(req.body);
 
   if (errors) {
@@ -53,7 +102,82 @@ export async function updateCorrectiveActionHandler(req: Request, res: Response)
     return;
   }
 
-  const updated = await actionService.updateCorrectiveAction(id, value);
+  if (value.workplace !== undefined && !canAccessRecordWorkplace(req.user!, value.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
+  const role = req.user!.role;
+
+  // Who performed this change is always the authenticated caller — never a client-supplied
+  // name — so the activity/audit trail can't be spoofed. Any client-sent `verifiedBy` is
+  // dropped here too; it is only ever set below, on an authorised verify transition.
+  value.actor = req.user!.name;
+  delete value.verifiedBy;
+
+  const editingCoreFields =
+    value.title !== undefined ||
+    value.description !== undefined ||
+    value.workplace !== undefined ||
+    value.department !== undefined ||
+    value.location !== undefined ||
+    value.priority !== undefined ||
+    value.dueDate !== undefined;
+
+  if (editingCoreFields && !canEditCorrectiveAction(role)) {
+    forbidden(res, 'Your role cannot edit corrective action details.');
+    return;
+  }
+
+  if (value.assignedTo !== undefined && value.assignedTo !== existing.assignedTo && !canAssignCorrectiveAction(role)) {
+    forbidden(res, 'Your role cannot reassign corrective actions.');
+    return;
+  }
+
+  if (value.status !== undefined && value.status !== existing.status) {
+    const nextStatus = value.status;
+
+    if (nextStatus === 'Verified') {
+      if (existing.status === 'Closed') {
+        // Reopen: moves a Closed action back to Verified.
+        if (!canCloseCorrectiveAction(role)) {
+          forbidden(res, 'Your role cannot reopen corrective actions.');
+          return;
+        }
+      } else {
+        if (!canVerifyCorrectiveAction(role)) {
+          forbidden(res, 'Your role cannot verify corrective actions.');
+          return;
+        }
+        if (existing.evidence.length === 0) {
+          res.status(400).json({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Cannot verify a corrective action with no evidence submitted.',
+              details: { status: 'At least one evidence file is required before verification.' },
+            },
+          });
+          return;
+        }
+        value.verifiedBy = req.user!.name;
+      }
+    } else if (nextStatus === 'Closed') {
+      if (!canCloseCorrectiveAction(role)) {
+        forbidden(res, 'Your role cannot close corrective actions.');
+        return;
+      }
+    } else if (nextStatus === 'In Progress' && existing.status === 'Awaiting Verification') {
+      // Sending a response back for more work is part of the verification role.
+      if (!canVerifyCorrectiveAction(role)) {
+        forbidden(res, 'Your role cannot send a corrective action back for more work.');
+        return;
+      }
+    }
+    // Assigned -> In Progress (start work) and In Progress -> Awaiting Verification
+    // (submit response) are open to whoever is doing the work.
+  }
+
+  const updated = await actionService.updateCorrectiveAction(id, existing, value);
   res.json({ data: updated });
 }
 
@@ -68,6 +192,11 @@ export async function addCommentHandler(req: Request, res: Response): Promise<vo
     return;
   }
 
+  if (!canAccessRecordWorkplace(req.user!, existing.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
   const { errors, value } = validateComment(req.body);
 
   if (errors) {
@@ -76,6 +205,8 @@ export async function addCommentHandler(req: Request, res: Response): Promise<vo
     });
     return;
   }
+
+  value.author = req.user!.name;
 
   const comment = await actionService.addComment(id, value);
   res.status(201).json({ data: comment });
@@ -92,6 +223,11 @@ export async function addEvidenceHandler(req: Request, res: Response): Promise<v
     return;
   }
 
+  if (!canAccessRecordWorkplace(req.user!, existing.workplace)) {
+    forbiddenWorkplace(res);
+    return;
+  }
+
   const { errors, value } = validateAddEvidence(req.body);
 
   if (errors) {
@@ -101,10 +237,10 @@ export async function addEvidenceHandler(req: Request, res: Response): Promise<v
     return;
   }
 
-  const items = await actionService.addEvidence(id, value.files, value.uploadedBy);
+  const items = await actionService.addEvidence(id, value.files, req.user!.name);
   res.status(201).json({ data: items });
 }
 
-export async function getCorrectiveActionStatsHandler(_req: Request, res: Response): Promise<void> {
-  res.json({ data: await actionService.getCorrectiveActionStats() });
+export async function getCorrectiveActionStatsHandler(req: Request, res: Response): Promise<void> {
+  res.json({ data: await actionService.getCorrectiveActionStats(workplaceScopeWhere(req.user!)) });
 }
