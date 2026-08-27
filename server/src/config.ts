@@ -25,4 +25,8 @@ export const config = {
   clientOrigin: requireEnv('CLIENT_ORIGIN', 'http://localhost:5173'),
   sessionSecret: requireEnv('SESSION_SECRET', DEV_SESSION_SECRET_FALLBACK),
   databaseUrl: requireEnv('DATABASE_URL'),
+  // Bearer secret for the scheduled reminder endpoint (POST /api/system/reminders/run) —
+  // unset by default, which leaves that endpoint permanently rejecting every request (see
+  // app.ts) rather than falling back to any guessable default.
+  cronSecret: process.env.CRON_SECRET,
 };

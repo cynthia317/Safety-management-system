@@ -7,6 +7,80 @@ import {
   canManageRiskAssessments,
   workplaceScopeWhere,
 } from '../auth/permissions';
+import { notifyUser } from '../notifications/service';
+import { excludeActor, resolveUserByName, resolveUsersByRole } from '../notifications/recipients';
+import type { RiskAssessment } from './types';
+
+const ESCALATION_RISK_LEVELS = ['High', 'Critical'];
+
+async function notifyRiskAssessmentAssigned(assessment: RiskAssessment, actorName: string): Promise<void> {
+  const responsible = await resolveUserByName(assessment.assessedBy, assessment.workplace);
+  if (!responsible || responsible.name.trim().toLowerCase() === actorName.trim().toLowerCase()) return;
+
+  await notifyUser(responsible, {
+    type: 'risk_assessment_assigned',
+    subject: `Risk assessment assigned: ${assessment.referenceNumber}`,
+    message: `You are responsible for risk assessment ${assessment.referenceNumber}: "${assessment.title}".`,
+    relatedEntityType: 'risk_assessment',
+    relatedEntityId: assessment.id,
+    relatedEntityReference: assessment.referenceNumber,
+  });
+}
+
+async function notifyRiskAssessmentHighRisk(assessment: RiskAssessment, actorName: string): Promise<void> {
+  if (!ESCALATION_RISK_LEVELS.includes(assessment.overallRiskLevel)) return;
+
+  const staff = await resolveUsersByRole(assessment.workplace, ['EHS Officer']);
+  const recipients = excludeActor(staff, actorName).filter(
+    (r) => r.name.trim().toLowerCase() !== assessment.assessedBy.trim().toLowerCase(),
+  );
+
+  await Promise.all(
+    recipients.map((recipient) =>
+      notifyUser(recipient, {
+        type: 'risk_assessment_high_risk',
+        subject: `${assessment.overallRiskLevel} risk assessment: ${assessment.referenceNumber}`,
+        message: `${assessment.referenceNumber}: "${assessment.title}" carries an overall ${assessment.overallRiskLevel.toLowerCase()} risk rating.`,
+        relatedEntityType: 'risk_assessment',
+        relatedEntityId: assessment.id,
+        relatedEntityReference: assessment.referenceNumber,
+        priority: assessment.overallRiskLevel as 'High' | 'Critical',
+      }),
+    ),
+  );
+}
+
+async function notifyRiskAssessmentSubmittedForReview(assessment: RiskAssessment, actorName: string): Promise<void> {
+  const reviewers = await resolveUsersByRole(assessment.workplace, ['EHS Officer']);
+  const recipients = excludeActor(reviewers, actorName);
+
+  await Promise.all(
+    recipients.map((recipient) =>
+      notifyUser(recipient, {
+        type: 'risk_assessment_submitted_for_review',
+        subject: `Risk assessment awaiting review: ${assessment.referenceNumber}`,
+        message: `${actorName} submitted ${assessment.referenceNumber}: "${assessment.title}" for review.`,
+        relatedEntityType: 'risk_assessment',
+        relatedEntityId: assessment.id,
+        relatedEntityReference: assessment.referenceNumber,
+      }),
+    ),
+  );
+}
+
+async function notifyRiskAssessmentApproved(assessment: RiskAssessment, actorName: string): Promise<void> {
+  const responsible = await resolveUserByName(assessment.assessedBy, assessment.workplace);
+  if (!responsible || responsible.name.trim().toLowerCase() === actorName.trim().toLowerCase()) return;
+
+  await notifyUser(responsible, {
+    type: 'risk_assessment_approved',
+    subject: `Risk assessment approved: ${assessment.referenceNumber}`,
+    message: `${actorName} approved ${assessment.referenceNumber}: "${assessment.title}".`,
+    relatedEntityType: 'risk_assessment',
+    relatedEntityId: assessment.id,
+    relatedEntityReference: assessment.referenceNumber,
+  });
+}
 
 function forbidden(res: Response, message: string): void {
   res.status(403).json({ error: { code: 'FORBIDDEN', message } });
@@ -73,6 +147,10 @@ export async function createRiskAssessmentHandler(req: Request, res: Response): 
     return;
   }
 
+  await Promise.all([
+    notifyRiskAssessmentAssigned(result, req.user!.name),
+    notifyRiskAssessmentHighRisk(result, req.user!.name),
+  ]);
   res.status(201).json({ data: result });
 }
 
@@ -122,5 +200,19 @@ export async function updateRiskAssessmentHandler(req: Request, res: Response): 
   }
 
   const updated = await riskAssessmentService.updateRiskAssessment(id, value);
+
+  if (updated) {
+    if (value.assessedBy !== undefined && value.assessedBy !== existing.assessedBy) {
+      await notifyRiskAssessmentAssigned(updated, req.user!.name);
+    }
+    if (value.status !== undefined && value.status !== existing.status) {
+      if (value.status === 'Under Review') {
+        await notifyRiskAssessmentSubmittedForReview(updated, req.user!.name);
+      } else if (value.status === 'Approved') {
+        await notifyRiskAssessmentApproved(updated, req.user!.name);
+      }
+    }
+  }
+
   res.json({ data: updated });
 }

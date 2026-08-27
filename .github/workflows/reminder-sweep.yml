@@ -1,0 +1,27 @@
+name: Reminder sweep
+
+# Render's free plan has no native Cron Job service, so this workflow is the scheduler for
+# POST /api/system/reminders/run (see server/src/modules/notifications/schedulerRoutes.ts).
+# The endpoint is idempotent (reminders are keyed by type+record+recipient), so overlapping
+# or repeated runs are safe.
+#
+# Required repo configuration (Settings -> Secrets and variables -> Actions):
+#   - Variable REMINDER_ENDPOINT_URL: e.g. https://safetyos-server.onrender.com/api/system/reminders/run
+#   - Secret   CRON_SECRET: same value as the server's CRON_SECRET env var (Render dashboard
+#     -> safetyos-server -> Environment; render.yaml has Render auto-generate it).
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run-reminder-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger reminder sweep
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ vars.REMINDER_ENDPOINT_URL }}"

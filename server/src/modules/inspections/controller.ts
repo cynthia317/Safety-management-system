@@ -2,6 +2,44 @@ import type { Request, Response } from 'express';
 import * as inspectionService from './service';
 import { validateCreateInspection, validateSaveResponses, validateUpdateInspection } from './schema';
 import { canAccessRecordWorkplace, canManageInspections, workplaceScopeWhere } from '../auth/permissions';
+import { notifyUser } from '../notifications/service';
+import { excludeActor, resolveUserByName, resolveUsersByRole } from '../notifications/recipients';
+import type { Inspection } from './types';
+
+async function notifyInspectionAssigned(inspection: Inspection, actorName: string): Promise<void> {
+  const inspector = await resolveUserByName(inspection.leadInspector, inspection.workplace);
+  if (!inspector || inspector.name.trim().toLowerCase() === actorName.trim().toLowerCase()) return;
+
+  await notifyUser(inspector, {
+    type: 'inspection_assigned',
+    subject: `Inspection assigned: ${inspection.referenceNumber}`,
+    message: `You have been assigned as lead inspector for ${inspection.referenceNumber}: "${inspection.title}", scheduled ${new Date(inspection.inspectionDate).toLocaleDateString()}.`,
+    relatedEntityType: 'inspection',
+    relatedEntityId: inspection.id,
+    relatedEntityReference: inspection.referenceNumber,
+  });
+}
+
+// The lifecycle only has one review stage (Submitted -> Reviewed) with no named reviewer
+// field, so this notifies whoever can act on it (canManageInspections roles) at the
+// inspection's workplace, rather than inventing a reviewer assignment that doesn't exist.
+async function notifyInspectionSubmitted(inspection: Inspection, actorName: string): Promise<void> {
+  const reviewers = await resolveUsersByRole(inspection.workplace, ['Supervisor', 'EHS Officer']);
+  const recipients = excludeActor(reviewers, actorName);
+
+  await Promise.all(
+    recipients.map((recipient) =>
+      notifyUser(recipient, {
+        type: 'inspection_submitted',
+        subject: `Inspection submitted for review: ${inspection.referenceNumber}`,
+        message: `${actorName} submitted ${inspection.referenceNumber}: "${inspection.title}" for review.`,
+        relatedEntityType: 'inspection',
+        relatedEntityId: inspection.id,
+        relatedEntityReference: inspection.referenceNumber,
+      }),
+    ),
+  );
+}
 
 function forbidden(res: Response, message: string): void {
   res.status(403).json({ error: { code: 'FORBIDDEN', message } });
@@ -60,6 +98,7 @@ export async function createInspectionHandler(req: Request, res: Response): Prom
     return;
   }
 
+  await notifyInspectionAssigned(result, req.user!.name);
   res.status(201).json({ data: result });
 }
 
@@ -103,6 +142,11 @@ export async function updateInspectionHandler(req: Request, res: Response): Prom
   }
 
   const updated = await inspectionService.updateInspection(id, value);
+
+  if (updated && value.leadInspector !== undefined && value.leadInspector !== existing.leadInspector) {
+    await notifyInspectionAssigned(updated, req.user!.name);
+  }
+
   res.json({ data: updated });
 }
 
@@ -193,5 +237,6 @@ export async function submitInspectionHandler(req: Request, res: Response): Prom
     return;
   }
 
+  await notifyInspectionSubmitted(result.inspection, req.user!.name);
   res.json({ data: result.inspection });
 }

@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { nextCounterValue } from '../../lib/counters';
-import { queueNotification } from '../notifications/service';
+import { notifyUser } from '../notifications/service';
+import { excludeActor, resolveUserByName, resolveUsersByRole, sameName } from '../notifications/recipients';
 import {
   validateFindingLink,
   validateHazardLink,
@@ -35,6 +36,60 @@ import type {
 async function nextReferenceNumber(): Promise<string> {
   const value = await nextCounterValue('correctiveAction', 511);
   return `CA-${String(value).padStart(4, '0')}`;
+}
+
+async function notifyAssigned(action: CorrectiveAction, actorName: string): Promise<void> {
+  const assignee = await resolveUserByName(action.assignedTo, action.workplace);
+  if (!assignee || sameName(assignee.name, actorName)) return;
+
+  await notifyUser(assignee, {
+    type: 'corrective_action_assigned',
+    subject: `Corrective action assigned: ${action.referenceNumber}`,
+    message: `You have been assigned corrective action ${action.referenceNumber}: "${action.title}", due ${new Date(action.dueDate).toLocaleDateString()}.`,
+    relatedEntityType: 'corrective_action',
+    relatedEntityId: action.id,
+    relatedEntityReference: action.referenceNumber,
+    priority: action.priority === 'Critical' || action.priority === 'High' ? action.priority : undefined,
+  });
+}
+
+// Replaces the old `recipient: 'EHS Officer'` role-name literal — resolves to the real,
+// active EHS Officer user(s) at the action's workplace, and notifies each one.
+async function notifyVerificationRequested(action: CorrectiveAction, actorName: string): Promise<void> {
+  const staff = await resolveUsersByRole(action.workplace, ['EHS Officer']);
+  const recipients = excludeActor(staff, actorName);
+
+  await Promise.all(
+    recipients.map((recipient) =>
+      notifyUser(recipient, {
+        type: 'corrective_action_verification_requested',
+        subject: `Verification requested: ${action.referenceNumber}`,
+        message: `${actorName} submitted a response for ${action.referenceNumber}: "${action.title}" and it is awaiting verification.`,
+        relatedEntityType: 'corrective_action',
+        relatedEntityId: action.id,
+        relatedEntityReference: action.referenceNumber,
+      }),
+    ),
+  );
+}
+
+async function notifyAssigneeOfStatus(
+  action: CorrectiveAction,
+  type: 'corrective_action_verified' | 'corrective_action_reopened' | 'corrective_action_closed',
+  actorName: string,
+): Promise<void> {
+  const assignee = await resolveUserByName(action.assignedTo, action.workplace);
+  if (!assignee || sameName(assignee.name, actorName)) return;
+
+  const verb = type === 'corrective_action_verified' ? 'verified' : type === 'corrective_action_closed' ? 'closed' : 'reopened';
+  await notifyUser(assignee, {
+    type,
+    subject: `Corrective action ${verb}: ${action.referenceNumber}`,
+    message: `${actorName} ${verb} corrective action ${action.referenceNumber}: "${action.title}".`,
+    relatedEntityType: 'corrective_action',
+    relatedEntityId: action.id,
+    relatedEntityReference: action.referenceNumber,
+  });
 }
 
 function fromRow(row: PrismaCorrectiveAction): CorrectiveAction {
@@ -217,16 +272,7 @@ export async function createCorrectiveAction(input: CreateCorrectiveActionInput)
   });
 
   const action = fromRow(row);
-
-  await queueNotification({
-    type: 'corrective_action_assigned',
-    recipient: action.assignedTo,
-    subject: `Corrective action assigned: ${action.referenceNumber}`,
-    message: `You have been assigned corrective action ${action.referenceNumber}: "${action.title}", due ${new Date(action.dueDate).toLocaleDateString()}.`,
-    relatedEntityType: 'corrective_action',
-    relatedEntityId: row.id,
-    relatedEntityReference: action.referenceNumber,
-  });
+  await notifyAssigned(action, input.createdBy);
 
   return action;
 }
@@ -275,21 +321,21 @@ export async function updateCorrectiveAction(
   });
   const updated = fromRow(updatedRow);
 
+  const CLOSED_LIKE = new Set(['Verified', 'Closed']);
+
   if (nextStatus && nextStatus !== existing.status) {
     await prisma.correctiveActionActivityEntry.create({
       data: { correctiveActionId: id, type: 'status_change', message: `Status changed from ${existing.status} to ${nextStatus}.`, actor, createdAt: now },
     });
 
     if (nextStatus === 'Awaiting Verification') {
-      await queueNotification({
-        type: 'corrective_action_verification_requested',
-        recipient: 'EHS Officer',
-        subject: `Verification requested: ${updated.referenceNumber}`,
-        message: `${actor} submitted a response for ${updated.referenceNumber}: "${updated.title}" and it is awaiting verification.`,
-        relatedEntityType: 'corrective_action',
-        relatedEntityId: id,
-        relatedEntityReference: updated.referenceNumber,
-      });
+      await notifyVerificationRequested(updated, actor);
+    } else if (nextStatus === 'Verified') {
+      await notifyAssigneeOfStatus(updated, 'corrective_action_verified', actor);
+    } else if (nextStatus === 'Closed') {
+      await notifyAssigneeOfStatus(updated, 'corrective_action_closed', actor);
+    } else if (CLOSED_LIKE.has(existing.status) && !CLOSED_LIKE.has(nextStatus)) {
+      await notifyAssigneeOfStatus(updated, 'corrective_action_reopened', actor);
     }
   }
 
@@ -302,15 +348,7 @@ export async function updateCorrectiveAction(
     });
 
     if (fieldChanges.assignedTo && fieldChanges.assignedTo !== existing.assignedTo) {
-      await queueNotification({
-        type: 'corrective_action_assigned',
-        recipient: fieldChanges.assignedTo as string,
-        subject: `Corrective action assigned: ${updated.referenceNumber}`,
-        message: `You have been assigned corrective action ${updated.referenceNumber}: "${updated.title}", due ${new Date(updated.dueDate).toLocaleDateString()}.`,
-        relatedEntityType: 'corrective_action',
-        relatedEntityId: id,
-        relatedEntityReference: updated.referenceNumber,
-      });
+      await notifyAssigned(updated, actor);
     }
   }
 

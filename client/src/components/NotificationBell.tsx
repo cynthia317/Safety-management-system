@@ -3,20 +3,31 @@ import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { Popover } from './Popover';
 import { EmptyState } from './EmptyState';
-import { listNotifications, markAllNotificationsRead } from '../lib/notificationsApi';
+import { getUnreadCount, listNotifications, markAllNotificationsRead, markNotificationRead } from '../lib/notificationsApi';
 import { formatRelativeTime } from '../lib/format';
-import type { NotificationEvent } from '../lib/notificationTypes';
+import { notificationLinkTo, type NotificationEvent } from '../lib/notificationTypes';
 
 const POLL_INTERVAL_MS = 30000;
 
 export function NotificationBell() {
   const navigate = useNavigate();
   const [events, setEvents] = useState<NotificationEvent[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     function load() {
+      // Unread count is server-filtered (not derived from the capped list below) so it
+      // stays correct even when there are more unread items than the list's own limit.
+      getUnreadCount()
+        .then((count) => {
+          if (!cancelled) setUnreadCount(count);
+        })
+        .catch(() => {
+          // Non-critical — leave the badge showing whatever it last had.
+        });
+
       listNotifications()
         .then((data) => {
           if (!cancelled) setEvents(data);
@@ -34,7 +45,17 @@ export function NotificationBell() {
     };
   }, []);
 
-  const unreadCount = events.filter((e) => !e.readAt).length;
+  function handleOpenNotification(event: NotificationEvent, close: () => void) {
+    if (!event.readAt) {
+      setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, readAt: new Date().toISOString() } : e)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+      void markNotificationRead(event.id).catch(() => {
+        // Non-critical — the badge/list will resync on the next poll either way.
+      });
+    }
+    navigate(notificationLinkTo(event));
+    close();
+  }
 
   return (
     <Popover
@@ -64,7 +85,10 @@ export function NotificationBell() {
                 type="button"
                 className="text-xs text-accent hover:underline"
                 onClick={() => {
-                  void markAllNotificationsRead().then(setEvents);
+                  void markAllNotificationsRead().then((data) => {
+                    setEvents(data);
+                    setUnreadCount(0);
+                  });
                 }}
               >
                 Mark all read
@@ -73,22 +97,28 @@ export function NotificationBell() {
           </div>
 
           {events.length === 0 ? (
-            <EmptyState icon={Bell} title="No notifications" description="Assignment and verification alerts will appear here." />
+            <EmptyState icon={Bell} title="No notifications yet" description="Assignment and status alerts will appear here." />
           ) : (
             <ul className="max-h-80 space-y-1 overflow-y-auto">
-              {events.slice(0, 20).map((event) => (
+              {events.map((event) => (
                 <li key={event.id}>
                   <button
                     type="button"
-                    onClick={() => {
-                      navigate(`/corrective-actions/${event.relatedEntityId}`);
-                      close();
-                    }}
+                    onClick={() => handleOpenNotification(event, close)}
                     className={`block w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-surface-hover ${
                       event.readAt ? 'opacity-70' : ''
                     }`}
                   >
-                    <p className="text-xs font-medium text-heading">{event.subject}</p>
+                    <div className="flex items-center gap-1.5">
+                      {(event.priority === 'Critical' || event.priority === 'High') && (
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${event.priority === 'Critical' ? 'bg-red-500' : 'bg-amber-500'}`}
+                          aria-hidden="true"
+                        />
+                      )}
+                      <p className="truncate text-xs font-medium text-heading">{event.subject}</p>
+                      {!event.readAt && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />}
+                    </div>
                     <p className="mt-0.5 text-xs text-muted">{formatRelativeTime(event.createdAt)}</p>
                   </button>
                 </li>

@@ -43,6 +43,8 @@ model User {
   workplace    String
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
+
+  notifications NotificationEvent[]
 }
 
 // ---------------------------------------------------------------------------
@@ -497,15 +499,33 @@ model RiskAssessmentActivityEntry {
 // ---------------------------------------------------------------------------
 
 model NotificationEvent {
-  id                     String    @id @default(uuid())
-  type                   String
-  recipient              String
+  id     String @id @default(uuid())
+  type   String
+  // Display-name snapshot, kept for backward compatibility with pre-Phase-3 rows and the
+  // Admin "view another recipient's feed by name" override — recipientId is the real
+  // authorization boundary going forward (see notifications/controller.ts#resolveRecipient).
+  recipient   String
+  recipientId String?
+  recipientUser User? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+  // Denormalized copy of the recipient's workplace at creation time — lets scheduled
+  // reminders and admin/debug queries scope by site without joining through User.
+  workplace              String?
+  priority               String?
   subject                String
   message                String
   relatedEntityType      String
   relatedEntityId        String
   relatedEntityReference String
-  createdAt              DateTime  @default(now())
-  deliveredAt            DateTime?
-  readAt                 DateTime?
+  // Set only on scheduler-generated due-soon/overdue reminders, as
+  // `${type}:${relatedEntityId}:${recipientId}` — the unique constraint is what makes a
+  // repeated scheduler run a no-op instead of creating duplicate reminders. Left null for
+  // every event-driven notification (assignment, status change, etc.), which may legitimately
+  // repeat over a record's lifetime.
+  reminderKey String?   @unique
+  createdAt   DateTime  @default(now())
+  deliveredAt DateTime?
+  readAt      DateTime?
+
+  @@index([recipientId])
+  @@index([workplace])
 }

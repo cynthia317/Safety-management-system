@@ -3,6 +3,39 @@ import * as findingService from './service';
 import * as inspectionService from '../inspections/service';
 import { validateComment, validateCreateFinding, validateCreateFindingFromResponse, validateUpdateFinding } from './schema';
 import { canAccessRecordWorkplace, canManageFinding, workplaceScopeWhere } from '../auth/permissions';
+import { notifyUser } from '../notifications/service';
+import { resolveUserByName } from '../notifications/recipients';
+import type { Finding } from './types';
+
+async function notifyFindingAssigned(finding: Finding, actorName: string): Promise<void> {
+  const assignee = await resolveUserByName(finding.assignedTo, finding.workplace);
+  if (!assignee || assignee.name.trim().toLowerCase() === actorName.trim().toLowerCase()) return;
+
+  const sourceNote = finding.inspectionReferenceNumber ? ` (from inspection ${finding.inspectionReferenceNumber})` : '';
+  await notifyUser(assignee, {
+    type: 'finding_assigned',
+    subject: `Finding assigned: ${finding.referenceNumber}`,
+    message: `You have been assigned finding ${finding.referenceNumber}${sourceNote}: "${finding.title}", due ${new Date(finding.dueDate).toLocaleDateString()}.`,
+    relatedEntityType: 'finding',
+    relatedEntityId: finding.id,
+    relatedEntityReference: finding.referenceNumber,
+    priority: finding.riskLevel === 'Critical' || finding.riskLevel === 'High' ? finding.riskLevel : undefined,
+  });
+}
+
+async function notifyFindingStatusChanged(finding: Finding, previousStatus: string, actorName: string): Promise<void> {
+  const assignee = await resolveUserByName(finding.assignedTo, finding.workplace);
+  if (!assignee || assignee.name.trim().toLowerCase() === actorName.trim().toLowerCase()) return;
+
+  await notifyUser(assignee, {
+    type: 'finding_status_changed',
+    subject: `Finding status updated: ${finding.referenceNumber}`,
+    message: `${finding.referenceNumber} ("${finding.title}") changed from ${previousStatus} to ${finding.status}.`,
+    relatedEntityType: 'finding',
+    relatedEntityId: finding.id,
+    relatedEntityReference: finding.referenceNumber,
+  });
+}
 
 function forbiddenWorkplace(res: Response): void {
   res.status(403).json({
@@ -69,6 +102,7 @@ export async function createFindingHandler(req: Request, res: Response): Promise
     return;
   }
 
+  await notifyFindingAssigned(result, req.user!.name);
   res.status(201).json({ data: result });
 }
 
@@ -119,6 +153,9 @@ export async function createFindingFromResponseHandler(req: Request, res: Respon
     return;
   }
 
+  if (!result.reused) {
+    await notifyFindingAssigned(result.finding, req.user!.name);
+  }
   res.status(result.reused ? 200 : 201).json({ data: result.finding });
 }
 
@@ -167,6 +204,16 @@ export async function updateFindingHandler(req: Request, res: Response): Promise
   value.actor = req.user!.name;
 
   const updated = await findingService.updateFinding(id, existing, value);
+
+  if (updated) {
+    if (value.assignedTo !== undefined && value.assignedTo !== existing.assignedTo) {
+      await notifyFindingAssigned(updated, req.user!.name);
+    }
+    if (value.status !== undefined && value.status !== existing.status) {
+      await notifyFindingStatusChanged(updated, existing.status, req.user!.name);
+    }
+  }
+
   res.json({ data: updated });
 }
 

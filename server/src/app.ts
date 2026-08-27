@@ -13,6 +13,7 @@ import { correctiveActionsRouter } from './modules/correctiveActions/routes';
 import { workplacesRouter } from './modules/workplaces/routes';
 import { riskAssessmentsRouter } from './modules/riskAssessments/routes';
 import { notificationsRouter } from './modules/notifications/routes';
+import { schedulerRouter } from './modules/notifications/schedulerRoutes';
 import { authRouter, usersRouter } from './modules/auth/routes';
 import { requireAuth } from './modules/auth/middleware';
 import { verifyOrigin } from './middleware/csrf';
@@ -68,6 +69,13 @@ export function createApp(): Express {
       timestamp: new Date().toISOString(),
     });
   });
+
+  // Scheduler endpoint for due-soon/overdue reminders — mounted ahead of verifyOrigin
+  // (like /api/health) because its caller is a cron job, not a browser, so it has no
+  // Origin/Referer header to check. Authorization is CRON_SECRET (see schedulerRoutes.ts),
+  // not session/CSRF, which is exactly why it must stay outside every session-authenticated
+  // router below rather than becoming a "public" route on one of them.
+  app.use('/api/system', schedulerRouter);
 
   // Applies to every route below (including auth) — CSRF defense belongs ahead of
   // everything that can mutate state, not just the session-authenticated routes.

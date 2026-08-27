@@ -2,6 +2,63 @@ import type { Request, Response } from 'express';
 import * as hazardService from './service';
 import { validateComment, validateCreateHazard, validateUpdateHazard } from './schema';
 import { canAccessRecordWorkplace, canTriageHazard, workplaceScopeWhere } from '../auth/permissions';
+import { notifyUser } from '../notifications/service';
+import { excludeActor, resolveUserByName, resolveUsersByRole } from '../notifications/recipients';
+import type { HazardReport } from './types';
+
+const ESCALATION_RISK_LEVELS = ['High', 'Critical'];
+
+async function notifyHazardAssigned(hazard: HazardReport, actorName: string): Promise<void> {
+  const assignee = await resolveUserByName(hazard.assignedTo, hazard.workplace);
+  if (!assignee || assignee.name.trim().toLowerCase() === actorName.trim().toLowerCase()) return;
+
+  await notifyUser(assignee, {
+    type: 'hazard_assigned',
+    subject: `Hazard assigned: ${hazard.referenceNumber}`,
+    message: `You have been assigned hazard report ${hazard.referenceNumber}: "${hazard.title}".`,
+    relatedEntityType: 'hazard',
+    relatedEntityId: hazard.id,
+    relatedEntityReference: hazard.referenceNumber,
+    priority: hazard.riskLevel === 'Critical' || hazard.riskLevel === 'High' ? hazard.riskLevel : undefined,
+  });
+}
+
+// High/Critical hazards escalate to the workplace's EHS/Supervisor staff on report — every
+// other risk level stays in the assignee's own feed, per "avoid notification spam".
+async function notifyHazardReported(hazard: HazardReport, actorName: string): Promise<void> {
+  if (!ESCALATION_RISK_LEVELS.includes(hazard.riskLevel)) return;
+
+  const staff = await resolveUsersByRole(hazard.workplace, ['EHS Officer', 'Supervisor']);
+  const recipients = excludeActor(staff, actorName).filter((r) => r.name.trim().toLowerCase() !== hazard.assignedTo.trim().toLowerCase());
+
+  await Promise.all(
+    recipients.map((recipient) =>
+      notifyUser(recipient, {
+        type: 'hazard_reported',
+        subject: `${hazard.riskLevel} hazard reported: ${hazard.referenceNumber}`,
+        message: `${actorName} reported a ${hazard.riskLevel.toLowerCase()}-risk hazard at ${hazard.workplace}: "${hazard.title}".`,
+        relatedEntityType: 'hazard',
+        relatedEntityId: hazard.id,
+        relatedEntityReference: hazard.referenceNumber,
+        priority: hazard.riskLevel as 'High' | 'Critical',
+      }),
+    ),
+  );
+}
+
+async function notifyHazardStatusChanged(hazard: HazardReport, previousStatus: string, actorName: string): Promise<void> {
+  const assignee = await resolveUserByName(hazard.assignedTo, hazard.workplace);
+  if (!assignee || assignee.name.trim().toLowerCase() === actorName.trim().toLowerCase()) return;
+
+  await notifyUser(assignee, {
+    type: 'hazard_status_changed',
+    subject: `Hazard status updated: ${hazard.referenceNumber}`,
+    message: `${hazard.referenceNumber} ("${hazard.title}") changed from ${previousStatus} to ${hazard.status}.`,
+    relatedEntityType: 'hazard',
+    relatedEntityId: hazard.id,
+    relatedEntityReference: hazard.referenceNumber,
+  });
+}
 
 function forbiddenWorkplace(res: Response): void {
   res.status(403).json({
@@ -57,6 +114,7 @@ export async function createHazardHandler(req: Request, res: Response): Promise<
   value.reportedBy = req.user!.name;
 
   const hazard = await hazardService.createHazard(value);
+  await Promise.all([notifyHazardAssigned(hazard, req.user!.name), notifyHazardReported(hazard, req.user!.name)]);
   res.status(201).json({ data: hazard });
 }
 
@@ -107,6 +165,16 @@ export async function updateHazardHandler(req: Request, res: Response): Promise<
   value.actor = req.user!.name;
 
   const updated = await hazardService.updateHazard(id, existing, value);
+
+  if (updated) {
+    if (value.assignedTo !== undefined && value.assignedTo !== existing.assignedTo) {
+      await notifyHazardAssigned(updated, req.user!.name);
+    }
+    if (value.status !== undefined && value.status !== existing.status) {
+      await notifyHazardStatusChanged(updated, existing.status, req.user!.name);
+    }
+  }
+
   res.json({ data: updated });
 }
 
