@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ChevronRight, LayoutDashboard, Plus, Table2 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { RiskBadge } from '../components/RiskBadge';
 import { EmptyState } from '../components/EmptyState';
 import { Button } from '../components/Button';
+import { Pagination } from '../components/Pagination';
 import {
   CorrectiveActionFilters,
   DEFAULT_CORRECTIVE_ACTION_FILTERS,
@@ -17,12 +18,15 @@ import { CorrectiveActionCard } from '../components/corrective-actions/Correctiv
 import { CorrectiveActionListSkeleton } from '../components/corrective-actions/CorrectiveActionListSkeleton';
 import { CorrectiveActionDashboard } from '../components/corrective-actions/CorrectiveActionDashboard';
 import { listCorrectiveActions } from '../lib/correctiveActionsApi';
+import { listWorkplaces } from '../lib/workplacesApi';
 import { formatDueLabel } from '../lib/format';
 import { isCorrectiveActionOverdue } from '../lib/correctiveActionOverdue';
-import { RISK_RANK } from '../lib/hazardOptions';
 import { useAuth } from '../lib/AuthContext';
 import { canCreateCorrectiveAction } from '../lib/roles';
+import type { PaginationMeta } from '../lib/pagination';
 import type { CorrectiveAction } from '../lib/correctiveActionTypes';
+
+const PAGE_SIZE = 20;
 
 const ROW_ACCENT: Record<CorrectiveAction['priority'], string> = {
   Critical: 'border-l-2 border-l-red-500',
@@ -31,25 +35,63 @@ const ROW_ACCENT: Record<CorrectiveAction['priority'], string> = {
   Low: '',
 };
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export function CorrectiveActionListPage() {
   const { user } = useAuth();
   const role = user!.role;
+  const [searchParams] = useSearchParams();
   const [view, setView] = useState<'register' | 'dashboard'>('register');
   const [actions, setActions] = useState<CorrectiveAction[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<CorrectiveActionFiltersState>(DEFAULT_CORRECTIVE_ACTION_FILTERS);
+  const [filters, setFilters] = useState<CorrectiveActionFiltersState>(() => ({
+    ...DEFAULT_CORRECTIVE_ACTION_FILTERS,
+    status: (searchParams.get('status') as CorrectiveActionFiltersState['status']) ?? DEFAULT_CORRECTIVE_ACTION_FILTERS.status,
+    priority: (searchParams.get('priority') as CorrectiveActionFiltersState['priority']) ?? DEFAULT_CORRECTIVE_ACTION_FILTERS.priority,
+  }));
+  const [overdueOnly, setOverdueOnly] = useState(searchParams.get('overdue') === 'true');
+  const [page, setPage] = useState(1);
   const [reloadToken, setReloadToken] = useState(0);
+  const [workplaceOptions, setWorkplaceOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    listWorkplaces()
+      .then((workplaces) => setWorkplaceOptions(workplaces.map((w) => w.name).sort()))
+      .catch(() => {
+        // Non-critical — the filter dropdown just stays empty.
+      });
+  }, []);
+
+  const debouncedSearch = useDebouncedValue(filters.search, 300);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    listCorrectiveActions()
-      .then((data) => {
+    listCorrectiveActions({
+      status: filters.status === 'all' ? undefined : filters.status,
+      priority: filters.priority === 'all' ? undefined : filters.priority,
+      workplace: filters.workplace === 'all' ? undefined : filters.workplace,
+      overdue: overdueOnly || undefined,
+      search: debouncedSearch || undefined,
+      sort: filters.sort,
+      page,
+      pageSize: PAGE_SIZE,
+    })
+      .then(({ items, meta: pageMeta }) => {
         if (cancelled) return;
-        setActions(data);
+        setActions(items);
+        setMeta(pageMeta ?? null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -63,39 +105,13 @@ export function CorrectiveActionListPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadToken]);
+  }, [filters.status, filters.priority, filters.workplace, filters.sort, overdueOnly, debouncedSearch, page, reloadToken]);
 
-  const filtered = useMemo(() => {
-    const search = filters.search.trim().toLowerCase();
-
-    const result = actions.filter((action) => {
-      if (filters.priority !== 'all' && action.priority !== filters.priority) return false;
-      if (filters.status !== 'all' && action.status !== filters.status) return false;
-      if (filters.workplace !== 'all' && action.workplace !== filters.workplace) return false;
-      if (search) {
-        const haystack = `${action.referenceNumber} ${action.title} ${action.location}`.toLowerCase();
-        if (!haystack.includes(search)) return false;
-      }
-      return true;
-    });
-
-    result.sort((a, b) => {
-      if (filters.sort === 'priority') {
-        const rankDiff = RISK_RANK[b.priority] - RISK_RANK[a.priority];
-        if (rankDiff !== 0) return rankDiff;
-        return a.dueDate.localeCompare(b.dueDate);
-      }
-      if (filters.sort === 'dueDate') return a.dueDate.localeCompare(b.dueDate);
-      return b.createdAt.localeCompare(a.createdAt);
-    });
-
-    return result;
-  }, [actions, filters]);
-
-  const workplaceOptions = useMemo(
-    () => Array.from(new Set(actions.map((a) => a.workplace).filter(Boolean))).sort(),
-    [actions],
-  );
+  function updateFilters(next: CorrectiveActionFiltersState) {
+    setFilters(next);
+    setOverdueOnly(false);
+    setPage(1);
+  }
 
   const columns: DataTableColumn<CorrectiveAction>[] = [
     {
@@ -207,11 +223,11 @@ export function CorrectiveActionListPage() {
       ) : (
       <SectionCard
         title="All Corrective Actions"
-        description={loading ? 'Loading…' : `${filtered.length} of ${actions.length} corrective actions`}
+        description={loading ? 'Loading…' : `${meta?.total ?? actions.length} corrective action${(meta?.total ?? actions.length) === 1 ? '' : 's'}`}
         noPadding
       >
         <div className="border-b border-border p-4">
-          <CorrectiveActionFilters value={filters} onChange={setFilters} workplaceOptions={workplaceOptions} />
+          <CorrectiveActionFilters value={filters} onChange={updateFilters} workplaceOptions={workplaceOptions} />
         </div>
 
         {loading ? (
@@ -232,19 +248,20 @@ export function CorrectiveActionListPage() {
             <div className="hidden md:block">
               <DataTable
                 columns={columns}
-                data={filtered}
+                data={actions}
                 getRowKey={(a) => a.id}
                 getRowClassName={(a) => ROW_ACCENT[a.priority]}
                 emptyMessage="No corrective actions match your filters."
               />
             </div>
             <div className="space-y-2 p-3 md:hidden">
-              {filtered.length === 0 ? (
+              {actions.length === 0 ? (
                 <EmptyState icon={AlertTriangle} title="No matching corrective actions" description="No corrective actions match your filters." />
               ) : (
-                filtered.map((action) => <CorrectiveActionCard key={action.id} action={action} />)
+                actions.map((action) => <CorrectiveActionCard key={action.id} action={action} />)
               )}
             </div>
+            {meta && <Pagination meta={meta} onPageChange={setPage} />}
           </>
         )}
       </SectionCard>

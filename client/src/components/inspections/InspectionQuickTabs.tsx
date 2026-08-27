@@ -17,16 +17,18 @@ export const QUICK_TABS: QuickTab[] = [
 ];
 
 interface InspectionQuickTabsProps {
-  inspections: Inspection[];
   activeTabId: string;
   onSelect: (tab: QuickTab) => void;
+  /** Result count for whichever tab is currently active — sourced from the server-paginated
+   * fetch's own total now that filtering happens server-side (each tab's own count would
+   * otherwise require a dedicated query per tab). */
+  activeCount?: number;
 }
 
-export function InspectionQuickTabs({ inspections, activeTabId, onSelect }: InspectionQuickTabsProps) {
+export function InspectionQuickTabs({ activeTabId, onSelect, activeCount }: InspectionQuickTabsProps) {
   return (
     <div className="flex gap-1.5 overflow-x-auto">
       {QUICK_TABS.map((tab) => {
-        const count = tab.status === 'all' ? inspections.length : inspections.filter((i) => i.status === tab.status).length;
         const isActive = tab.id === activeTabId;
 
         return (
@@ -41,7 +43,7 @@ export function InspectionQuickTabs({ inspections, activeTabId, onSelect }: Insp
             }`}
           >
             {tab.label}
-            <span className={`ml-1.5 ${isActive ? 'text-accent/70' : 'text-muted'}`}>{count}</span>
+            {isActive && activeCount !== undefined && <span className="ml-1.5 text-accent/70">{activeCount}</span>}
           </button>
         );
       })}

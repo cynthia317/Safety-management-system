@@ -9,6 +9,7 @@ const TEMPLATE_MANAGER_ROLES: Role[] = ROLES.filter((r) => r !== 'Worker');
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { MyActionsPage } from './pages/MyActionsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { HazardListPage } from './pages/HazardListPage';
 import { NewHazardPage } from './pages/NewHazardPage';
@@ -43,6 +44,7 @@ import { navItems } from './lib/nav';
 const placeholderNavItems = navItems.filter(
   (item) =>
     item.path !== '/dashboard' &&
+    item.path !== '/my-actions' &&
     item.path !== '/hazards' &&
     item.path !== '/findings' &&
     item.path !== '/inspections' &&
@@ -64,6 +66,7 @@ function App() {
         <Route element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/my-actions" element={<MyActionsPage />} />
 
           <Route path="/hazards" element={<HazardListPage />} />
           <Route path="/hazards/new" element={<NewHazardPage />} />

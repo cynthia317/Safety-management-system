@@ -5,7 +5,8 @@ import { validateComment, validateCreateFinding, validateCreateFindingFromRespon
 import { canAccessRecordWorkplace, canManageFinding, workplaceScopeWhere } from '../auth/permissions';
 import { notifyUser } from '../notifications/service';
 import { resolveUserByName } from '../notifications/recipients';
-import type { Finding } from './types';
+import { parsePagination, paginationMeta } from '../../lib/pagination';
+import type { Finding, FindingStatus, RiskLevel } from './types';
 
 async function notifyFindingAssigned(finding: Finding, actorName: string): Promise<void> {
   const assignee = await resolveUserByName(finding.assignedTo, finding.workplace);
@@ -43,10 +44,33 @@ function forbiddenWorkplace(res: Response): void {
   });
 }
 
+function queryString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 export async function listFindingsHandler(req: Request, res: Response): Promise<void> {
-  const hazardId = typeof req.query.hazardId === 'string' ? req.query.hazardId : undefined;
-  const inspectionId = typeof req.query.inspectionId === 'string' ? req.query.inspectionId : undefined;
-  res.json({ data: await findingService.listFindings({ hazardId, inspectionId, workplace: workplaceScopeWhere(req.user!) }) });
+  const pagination = parsePagination(req.query as Record<string, unknown>);
+  const assignedToRaw = queryString(req.query.assignedTo);
+  const assignedTo = assignedToRaw === 'me' ? req.user!.name : assignedToRaw;
+
+  const scopeWhere = workplaceScopeWhere(req.user!);
+  const requestedWorkplace = queryString(req.query.workplace);
+
+  const { items, total } = await findingService.listFindings({
+    hazardId: queryString(req.query.hazardId),
+    inspectionId: queryString(req.query.inspectionId),
+    workplace: scopeWhere ?? (requestedWorkplace ? { equals: requestedWorkplace, mode: 'insensitive' } : undefined),
+    status: queryString(req.query.status) as FindingStatus | undefined,
+    riskLevel: queryString(req.query.riskLevel) as RiskLevel | undefined,
+    assignedTo: assignedTo ? { equals: assignedTo, mode: 'insensitive' } : undefined,
+    overdue: req.query.overdue === 'true',
+    openOnly: req.query.openOnly === 'true',
+    search: queryString(req.query.search),
+    sort: queryString(req.query.sort) as 'newest' | 'oldest' | 'dueDate' | 'risk' | undefined,
+    pagination,
+  });
+
+  res.json({ data: items, ...(pagination ? { meta: paginationMeta(total, pagination) } : {}) });
 }
 
 export async function getFindingHandler(req: Request, res: Response): Promise<void> {

@@ -9,7 +9,9 @@ import {
 } from '../auth/permissions';
 import { notifyUser } from '../notifications/service';
 import { excludeActor, resolveUserByName, resolveUsersByRole } from '../notifications/recipients';
-import type { RiskAssessment } from './types';
+import { parsePagination, paginationMeta } from '../../lib/pagination';
+import type { RiskAssessment, RiskAssessmentStatus } from './types';
+import type { RiskLevel } from './riskMatrix';
 
 const ESCALATION_RISK_LEVELS = ['High', 'Critical'];
 
@@ -96,11 +98,30 @@ function isSignOffTransition(fromStatus: string, toStatus: string): boolean {
   return toStatus === 'Approved' || toStatus === 'Closed' || fromStatus === 'Approved' || fromStatus === 'Closed';
 }
 
+function queryString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 export async function listRiskAssessmentsHandler(req: Request, res: Response): Promise<void> {
-  const hazardId = typeof req.query.hazardId === 'string' ? req.query.hazardId : undefined;
-  res.json({
-    data: await riskAssessmentService.listRiskAssessments({ hazardId, workplace: workplaceScopeWhere(req.user!) }),
+  const pagination = parsePagination(req.query as Record<string, unknown>);
+  const assignedToRaw = queryString(req.query.assignedTo);
+  const assignedTo = assignedToRaw === 'me' ? req.user!.name : assignedToRaw;
+
+  const scopeWhere = workplaceScopeWhere(req.user!);
+  const requestedWorkplace = queryString(req.query.workplace);
+
+  const { items, total } = await riskAssessmentService.listRiskAssessments({
+    hazardId: queryString(req.query.hazardId),
+    workplace: scopeWhere ?? (requestedWorkplace ? { equals: requestedWorkplace, mode: 'insensitive' } : undefined),
+    status: queryString(req.query.status) as RiskAssessmentStatus | undefined,
+    riskLevel: queryString(req.query.riskLevel) as RiskLevel | undefined,
+    assignedTo: assignedTo ? { equals: assignedTo, mode: 'insensitive' } : undefined,
+    search: queryString(req.query.search),
+    sort: queryString(req.query.sort) as 'newest' | 'oldest' | undefined,
+    pagination,
   });
+
+  res.json({ data: items, ...(pagination ? { meta: paginationMeta(total, pagination) } : {}) });
 }
 
 export async function getRiskAssessmentHandler(req: Request, res: Response): Promise<void> {

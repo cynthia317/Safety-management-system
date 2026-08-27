@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ChevronRight, Plus } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
@@ -10,33 +10,59 @@ import { LoadingState } from '../components/LoadingState';
 import { Button } from '../components/Button';
 import { Input } from '../components/form/Input';
 import { Select } from '../components/form/Select';
+import { Pagination } from '../components/Pagination';
 import { RiskMatrixBadge } from '../components/risk-assessments/RiskMatrixBadge';
 import { listRiskAssessments } from '../lib/riskAssessmentsApi';
 import { RISK_ASSESSMENT_STATUSES } from '../lib/riskAssessmentOptions';
 import { formatDate } from '../lib/format';
+import type { PaginationMeta } from '../lib/pagination';
 import type { RiskAssessment, RiskAssessmentStatus } from '../lib/riskAssessmentTypes';
 import type { RiskLevel } from '../lib/hazardTypes';
 
+const PAGE_SIZE = 20;
 const RISK_LEVELS: RiskLevel[] = ['Critical', 'High', 'Medium', 'Low'];
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export function RiskAssessmentListPage() {
+  const [searchParams] = useSearchParams();
   const [assessments, setAssessments] = useState<RiskAssessment[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<RiskAssessmentStatus | 'all'>('all');
-  const [riskLevel, setRiskLevel] = useState<RiskLevel | 'all'>('all');
+  const [status, setStatus] = useState<RiskAssessmentStatus | 'all'>(
+    (searchParams.get('status') as RiskAssessmentStatus | 'all') ?? 'all',
+  );
+  const [riskLevel, setRiskLevel] = useState<RiskLevel | 'all'>((searchParams.get('riskLevel') as RiskLevel | 'all') ?? 'all');
+  const [page, setPage] = useState(1);
   const [reloadToken, setReloadToken] = useState(0);
+
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    listRiskAssessments()
-      .then((data) => {
+    listRiskAssessments({
+      status: status === 'all' ? undefined : status,
+      riskLevel: riskLevel === 'all' ? undefined : riskLevel,
+      search: debouncedSearch || undefined,
+      page,
+      pageSize: PAGE_SIZE,
+    })
+      .then(({ items, meta: pageMeta }) => {
         if (cancelled) return;
-        setAssessments(data);
+        setAssessments(items);
+        setMeta(pageMeta ?? null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -50,19 +76,22 @@ export function RiskAssessmentListPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadToken]);
+  }, [status, riskLevel, debouncedSearch, page, reloadToken]);
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return assessments
-      .filter((a) => {
-        if (status !== 'all' && a.status !== status) return false;
-        if (riskLevel !== 'all' && a.overallRiskLevel !== riskLevel) return false;
-        if (term && !`${a.title} ${a.referenceNumber} ${a.workplace}`.toLowerCase().includes(term)) return false;
-        return true;
-      })
-      .sort((a, b) => b.assessmentDate.localeCompare(a.assessmentDate));
-  }, [assessments, search, status, riskLevel]);
+  function updateStatus(next: RiskAssessmentStatus | 'all') {
+    setStatus(next);
+    setPage(1);
+  }
+
+  function updateRiskLevel(next: RiskLevel | 'all') {
+    setRiskLevel(next);
+    setPage(1);
+  }
+
+  function updateSearch(next: string) {
+    setSearch(next);
+    setPage(1);
+  }
 
   const columns: DataTableColumn<RiskAssessment>[] = [
     {
@@ -141,20 +170,20 @@ export function RiskAssessmentListPage() {
 
       <SectionCard
         title="All Risk Assessments"
-        description={loading ? 'Loading…' : `${filtered.length} of ${assessments.length} risk assessments`}
+        description={loading ? 'Loading…' : `${meta?.total ?? assessments.length} risk assessment${(meta?.total ?? assessments.length) === 1 ? '' : 's'}`}
         noPadding
       >
         <div className="flex flex-wrap items-center gap-2.5 border-b border-border p-4">
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => updateSearch(e.target.value)}
             placeholder="Search by title, reference, or workplace…"
             className="min-w-[220px] flex-1"
             aria-label="Search risk assessments"
           />
           <Select
             value={riskLevel}
-            onChange={(e) => setRiskLevel(e.target.value as RiskLevel | 'all')}
+            onChange={(e) => updateRiskLevel(e.target.value as RiskLevel | 'all')}
             aria-label="Filter by overall risk level"
             className="w-auto min-w-[160px]"
           >
@@ -167,7 +196,7 @@ export function RiskAssessmentListPage() {
           </Select>
           <Select
             value={status}
-            onChange={(e) => setStatus(e.target.value as RiskAssessmentStatus | 'all')}
+            onChange={(e) => updateStatus(e.target.value as RiskAssessmentStatus | 'all')}
             aria-label="Filter by status"
             className="w-auto min-w-[140px]"
           >
@@ -194,7 +223,10 @@ export function RiskAssessmentListPage() {
             }
           />
         ) : (
-          <DataTable columns={columns} data={filtered} getRowKey={(a) => a.id} emptyMessage="No risk assessments match your filters." />
+          <>
+            <DataTable columns={columns} data={assessments} getRowKey={(a) => a.id} emptyMessage="No risk assessments match your filters." />
+            {meta && <Pagination meta={meta} onPageChange={setPage} />}
+          </>
         )}
       </SectionCard>
     </>

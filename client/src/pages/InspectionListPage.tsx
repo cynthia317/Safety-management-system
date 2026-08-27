@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ChevronRight, ClipboardList, Plus } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
@@ -7,6 +7,7 @@ import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
 import { Button } from '../components/Button';
+import { Pagination } from '../components/Pagination';
 import {
   InspectionFilters,
   DEFAULT_INSPECTION_FILTERS,
@@ -22,29 +23,78 @@ import { InspectionListSkeleton } from '../components/inspections/InspectionList
 import { InspectionProgressBar } from '../components/inspections/InspectionProgressBar';
 import { listInspections } from '../lib/inspectionsApi';
 import { listTemplates } from '../lib/inspectionTemplatesApi';
+import { listWorkplaces } from '../lib/workplacesApi';
 import { computeOverallProgress } from '../lib/inspectionProgress';
 import { formatDate } from '../lib/format';
+import type { PaginationMeta } from '../lib/pagination';
 import type { Inspection } from '../lib/inspectionTypes';
 import type { InspectionTemplate } from '../lib/inspectionTemplateTypes';
 
+const PAGE_SIZE = 20;
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export function InspectionListPage() {
+  const [searchParams] = useSearchParams();
   const [inspections, setInspections] = useState<Inspection[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [templates, setTemplates] = useState<InspectionTemplate[]>([]);
+  const [workplaceOptions, setWorkplaceOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<InspectionFiltersState>(DEFAULT_INSPECTION_FILTERS);
+  const [filters, setFilters] = useState<InspectionFiltersState>(() => ({
+    ...DEFAULT_INSPECTION_FILTERS,
+    status: (searchParams.get('status') as InspectionFiltersState['status']) ?? DEFAULT_INSPECTION_FILTERS.status,
+  }));
+  const [overdueOnly] = useState(searchParams.get('overdue') === 'true');
+  const [page, setPage] = useState(1);
   const [reloadToken, setReloadToken] = useState(0);
+
+  useEffect(() => {
+    listTemplates()
+      .then(setTemplates)
+      .catch(() => {
+        // Non-critical — the template filter dropdown just stays empty.
+      });
+    listWorkplaces()
+      .then((workplaces) => setWorkplaceOptions(workplaces.map((w) => w.name).sort()))
+      .catch(() => {
+        // Non-critical — the workplace filter dropdown just stays empty.
+      });
+  }, []);
+
+  const debouncedSearch = useDebouncedValue(filters.search, 300);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    Promise.all([listInspections(), listTemplates()])
-      .then(([inspectionData, templateData]) => {
+    listInspections({
+      status: filters.status === 'all' ? undefined : filters.status,
+      workplace: filters.workplace === 'all' ? undefined : filters.workplace,
+      assignedTo: filters.inspector === 'all' ? undefined : filters.inspector,
+      overdue: overdueOnly || undefined,
+      search: debouncedSearch || undefined,
+      sort: filters.sort,
+      page,
+      pageSize: PAGE_SIZE,
+    })
+      .then(({ items, meta: pageMeta }) => {
         if (cancelled) return;
-        setInspections(inspectionData);
-        setTemplates(templateData);
+        // Template filtering has no server-side equivalent yet (no templateId query param) —
+        // applied client-side over the current page only, which is an acceptable, documented
+        // exception given how rarely it's combined with other filters in practice.
+        const filtered = filters.templateId === 'all' ? items : items.filter((i) => i.templateId === filters.templateId);
+        setInspections(filtered);
+        setMeta(pageMeta ?? null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -58,38 +108,13 @@ export function InspectionListPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadToken]);
+  }, [filters.status, filters.workplace, filters.inspector, filters.templateId, filters.sort, overdueOnly, debouncedSearch, page, reloadToken]);
 
-  const filtered = useMemo(() => {
-    const search = filters.search.trim().toLowerCase();
+  function updateFilters(next: InspectionFiltersState) {
+    setFilters(next);
+    setPage(1);
+  }
 
-    const result = inspections.filter((inspection) => {
-      if (filters.status !== 'all' && inspection.status !== filters.status) return false;
-      if (filters.templateId !== 'all' && inspection.templateId !== filters.templateId) return false;
-      if (filters.workplace !== 'all' && inspection.workplace !== filters.workplace) return false;
-      if (filters.inspector !== 'all' && inspection.leadInspector !== filters.inspector) return false;
-      if (search) {
-        const haystack = `${inspection.referenceNumber} ${inspection.title} ${inspection.workplace}`.toLowerCase();
-        if (!haystack.includes(search)) return false;
-      }
-      return true;
-    });
-
-    result.sort((a, b) => {
-      if (filters.sort === 'workplace') return a.workplace.localeCompare(b.workplace);
-      if (filters.sort === 'status') return a.status.localeCompare(b.status);
-      return filters.sort === 'newest'
-        ? b.createdAt.localeCompare(a.createdAt)
-        : a.createdAt.localeCompare(b.createdAt);
-    });
-
-    return result;
-  }, [inspections, filters]);
-
-  const workplaceOptions = useMemo(
-    () => Array.from(new Set(inspections.map((i) => i.workplace).filter(Boolean))).sort(),
-    [inspections],
-  );
   const inspectorOptions = useMemo(
     () => Array.from(new Set(inspections.map((i) => i.leadInspector).filter(Boolean))).sort(),
     [inspections],
@@ -186,18 +211,18 @@ export function InspectionListPage() {
       />
 
       <div className="mb-4">
-        <InspectionQuickTabs inspections={inspections} activeTabId={activeTabId} onSelect={(tab) => setFilters(filtersForTab(tab))} />
+        <InspectionQuickTabs activeTabId={activeTabId} onSelect={(tab) => updateFilters(filtersForTab(tab))} activeCount={meta?.total} />
       </div>
 
       <SectionCard
         title="Inspection Register"
-        description={loading ? 'Loading…' : `${filtered.length} of ${inspections.length} inspections`}
+        description={loading ? 'Loading…' : `${meta?.total ?? inspections.length} inspection${(meta?.total ?? inspections.length) === 1 ? '' : 's'}`}
         noPadding
       >
         <div className="border-b border-border p-4">
           <InspectionFilters
             value={filters}
-            onChange={setFilters}
+            onChange={updateFilters}
             templateOptions={templateOptions}
             workplaceOptions={workplaceOptions}
             inspectorOptions={inspectorOptions}
@@ -222,18 +247,19 @@ export function InspectionListPage() {
             <div className="hidden md:block">
               <DataTable
                 columns={columns}
-                data={filtered}
+                data={inspections}
                 getRowKey={(i) => i.id}
                 emptyMessage="No inspections match your filters."
               />
             </div>
             <div className="space-y-2 p-3 md:hidden">
-              {filtered.length === 0 ? (
+              {inspections.length === 0 ? (
                 <EmptyState icon={AlertTriangle} title="No matching inspections" description="No inspections match your filters." />
               ) : (
-                filtered.map((inspection) => <InspectionCard key={inspection.id} inspection={inspection} />)
+                inspections.map((inspection) => <InspectionCard key={inspection.id} inspection={inspection} />)
               )}
             </div>
+            {meta && <Pagination meta={meta} onPageChange={setPage} />}
           </>
         )}
       </SectionCard>

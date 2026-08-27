@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ChevronRight, Plus } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { RiskBadge } from '../components/RiskBadge';
 import { EmptyState } from '../components/EmptyState';
 import { Button } from '../components/Button';
+import { Pagination } from '../components/Pagination';
 import {
   FindingFilters,
   DEFAULT_FINDING_FILTERS,
@@ -16,9 +17,12 @@ import {
 import { FindingCard } from '../components/findings/FindingCard';
 import { FindingListSkeleton } from '../components/findings/FindingListSkeleton';
 import { listFindings } from '../lib/findingsApi';
+import { listWorkplaces } from '../lib/workplacesApi';
 import { formatDueLabel } from '../lib/format';
-import { RISK_RANK } from '../lib/hazardOptions';
+import type { PaginationMeta } from '../lib/pagination';
 import type { Finding } from '../lib/findingTypes';
+
+const PAGE_SIZE = 20;
 
 const ROW_ACCENT: Record<Finding['riskLevel'], string> = {
   Critical: 'border-l-2 border-l-red-500',
@@ -27,22 +31,62 @@ const ROW_ACCENT: Record<Finding['riskLevel'], string> = {
   Low: '',
 };
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export function FindingListPage() {
+  const [searchParams] = useSearchParams();
   const [findings, setFindings] = useState<Finding[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FindingFiltersState>(DEFAULT_FINDING_FILTERS);
+  const [filters, setFilters] = useState<FindingFiltersState>(() => ({
+    ...DEFAULT_FINDING_FILTERS,
+    status: (searchParams.get('status') as FindingFiltersState['status']) ?? DEFAULT_FINDING_FILTERS.status,
+    risk: (searchParams.get('riskLevel') as FindingFiltersState['risk']) ?? DEFAULT_FINDING_FILTERS.risk,
+  }));
+  const [overdueOnly] = useState(searchParams.get('overdue') === 'true');
+  const [openOnly, setOpenOnly] = useState(searchParams.get('openOnly') === 'true');
+  const [page, setPage] = useState(1);
   const [reloadToken, setReloadToken] = useState(0);
+  const [workplaceOptions, setWorkplaceOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    listWorkplaces()
+      .then((workplaces) => setWorkplaceOptions(workplaces.map((w) => w.name).sort()))
+      .catch(() => {
+        // Non-critical — the filter dropdown just stays empty.
+      });
+  }, []);
+
+  const debouncedSearch = useDebouncedValue(filters.search, 300);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    listFindings()
-      .then((data) => {
+    listFindings({
+      status: filters.status === 'all' ? undefined : filters.status,
+      riskLevel: filters.risk === 'all' ? undefined : filters.risk,
+      workplace: filters.workplace === 'all' ? undefined : filters.workplace,
+      overdue: overdueOnly || undefined,
+      openOnly: filters.status === 'all' ? openOnly : undefined,
+      search: debouncedSearch || undefined,
+      sort: filters.sort,
+      page,
+      pageSize: PAGE_SIZE,
+    })
+      .then(({ items, meta: pageMeta }) => {
         if (cancelled) return;
-        setFindings(data);
+        setFindings(items);
+        setMeta(pageMeta ?? null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -56,41 +100,13 @@ export function FindingListPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadToken]);
+  }, [filters.status, filters.risk, filters.workplace, filters.sort, overdueOnly, openOnly, debouncedSearch, page, reloadToken]);
 
-  const filtered = useMemo(() => {
-    const search = filters.search.trim().toLowerCase();
-
-    const result = findings.filter((finding) => {
-      if (filters.risk !== 'all' && finding.riskLevel !== filters.risk) return false;
-      if (filters.status !== 'all' && finding.status !== filters.status) return false;
-      if (filters.workplace !== 'all' && finding.workplace !== filters.workplace) return false;
-      if (search) {
-        const haystack = `${finding.referenceNumber} ${finding.title} ${finding.location}`.toLowerCase();
-        if (!haystack.includes(search)) return false;
-      }
-      return true;
-    });
-
-    result.sort((a, b) => {
-      if (filters.sort === 'risk') {
-        const rankDiff = RISK_RANK[b.riskLevel] - RISK_RANK[a.riskLevel];
-        if (rankDiff !== 0) return rankDiff;
-        return a.dueDate.localeCompare(b.dueDate);
-      }
-      if (filters.sort === 'dueDate') {
-        return a.dueDate.localeCompare(b.dueDate);
-      }
-      return b.createdAt.localeCompare(a.createdAt);
-    });
-
-    return result;
-  }, [findings, filters]);
-
-  const workplaceOptions = useMemo(
-    () => Array.from(new Set(findings.map((f) => f.workplace).filter(Boolean))).sort(),
-    [findings],
-  );
+  function updateFilters(next: FindingFiltersState) {
+    setFilters(next);
+    setOpenOnly(false);
+    setPage(1);
+  }
 
   const columns: DataTableColumn<Finding>[] = [
     {
@@ -182,11 +198,11 @@ export function FindingListPage() {
 
       <SectionCard
         title="All Findings"
-        description={loading ? 'Loading…' : `${filtered.length} of ${findings.length} findings`}
+        description={loading ? 'Loading…' : `${meta?.total ?? findings.length} finding${(meta?.total ?? findings.length) === 1 ? '' : 's'}`}
         noPadding
       >
         <div className="border-b border-border p-4">
-          <FindingFilters value={filters} onChange={setFilters} workplaceOptions={workplaceOptions} />
+          <FindingFilters value={filters} onChange={updateFilters} workplaceOptions={workplaceOptions} />
         </div>
 
         {loading ? (
@@ -207,23 +223,24 @@ export function FindingListPage() {
             <div className="hidden md:block">
               <DataTable
                 columns={columns}
-                data={filtered}
+                data={findings}
                 getRowKey={(f) => f.id}
                 getRowClassName={(f) => ROW_ACCENT[f.riskLevel]}
                 emptyMessage="No findings match your filters."
               />
             </div>
             <div className="space-y-2 p-3 md:hidden">
-              {filtered.length === 0 ? (
+              {findings.length === 0 ? (
                 <EmptyState
                   icon={AlertTriangle}
                   title="No matching findings"
                   description="No findings match your filters."
                 />
               ) : (
-                filtered.map((finding) => <FindingCard key={finding.id} finding={finding} />)
+                findings.map((finding) => <FindingCard key={finding.id} finding={finding} />)
               )}
             </div>
+            {meta && <Pagination meta={meta} onPageChange={setPage} />}
           </>
         )}
       </SectionCard>

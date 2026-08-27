@@ -4,7 +4,8 @@ import { validateComment, validateCreateHazard, validateUpdateHazard } from './s
 import { canAccessRecordWorkplace, canTriageHazard, workplaceScopeWhere } from '../auth/permissions';
 import { notifyUser } from '../notifications/service';
 import { excludeActor, resolveUserByName, resolveUsersByRole } from '../notifications/recipients';
-import type { HazardReport } from './types';
+import { parsePagination, paginationMeta } from '../../lib/pagination';
+import type { HazardReport, HazardStatus, RiskLevel } from './types';
 
 const ESCALATION_RISK_LEVELS = ['High', 'Critical'];
 
@@ -66,8 +67,36 @@ function forbiddenWorkplace(res: Response): void {
   });
 }
 
+function queryString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 export async function listHazardsHandler(req: Request, res: Response): Promise<void> {
-  res.json({ data: await hazardService.listHazards({ workplace: workplaceScopeWhere(req.user!) }) });
+  const pagination = parsePagination(req.query as Record<string, unknown>);
+  const assignedToRaw = queryString(req.query.assignedTo);
+  const unassignedOnly = assignedToRaw === 'unassigned';
+  const assignedTo = assignedToRaw === 'me' ? req.user!.name : !unassignedOnly ? assignedToRaw : undefined;
+  const sort = queryString(req.query.sort) as 'newest' | 'oldest' | 'risk' | undefined;
+
+  const scopeWhere = workplaceScopeWhere(req.user!);
+  const requestedWorkplace = queryString(req.query.workplace);
+
+  const { items, total } = await hazardService.listHazards({
+    workplace: scopeWhere ?? (requestedWorkplace ? { equals: requestedWorkplace, mode: 'insensitive' } : undefined),
+    status: queryString(req.query.status) as HazardStatus | undefined,
+    riskLevel: queryString(req.query.riskLevel) as RiskLevel | undefined,
+    assignedTo: assignedTo ? { equals: assignedTo, mode: 'insensitive' } : undefined,
+    unassignedOnly,
+    overdue: req.query.overdue === 'true',
+    openOnly: req.query.openOnly === 'true',
+    hazardCategory: queryString(req.query.hazardCategory),
+    reportedAfter: queryString(req.query.reportedAfter) ? new Date(queryString(req.query.reportedAfter)!) : undefined,
+    search: queryString(req.query.search),
+    sort,
+    pagination,
+  });
+
+  res.json({ data: items, ...(pagination ? { meta: paginationMeta(total, pagination) } : {}) });
 }
 
 export async function getHazardHandler(req: Request, res: Response): Promise<void> {

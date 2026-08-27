@@ -7,13 +7,39 @@ import type {
   ResponseInput,
   UpdateInspectionPayload,
 } from './inspectionTypes';
+import type { ListResult, PaginationMeta } from './pagination';
 
 interface DataEnvelope<T> {
   data: T;
+  meta?: PaginationMeta;
 }
 
-export function listInspections(): Promise<Inspection[]> {
-  return apiRequest<DataEnvelope<Inspection[]>>('/api/inspections').then((res) => res.data);
+export interface ListInspectionsFilter {
+  status?: string;
+  workplace?: string;
+  assignedTo?: string;
+  overdue?: boolean;
+  search?: string;
+  sort?: 'newest' | 'oldest' | 'workplace' | 'status';
+  page?: number;
+  pageSize?: number;
+}
+
+export function listInspections(filter?: ListInspectionsFilter): Promise<ListResult<Inspection>> {
+  const params = new URLSearchParams();
+  if (filter?.status) params.set('status', filter.status);
+  if (filter?.workplace) params.set('workplace', filter.workplace);
+  if (filter?.assignedTo) params.set('assignedTo', filter.assignedTo);
+  if (filter?.overdue) params.set('overdue', 'true');
+  if (filter?.search) params.set('search', filter.search);
+  if (filter?.sort) params.set('sort', filter.sort);
+  if (filter?.page) params.set('page', String(filter.page));
+  if (filter?.pageSize) params.set('pageSize', String(filter.pageSize));
+  const query = params.toString();
+  return apiRequest<DataEnvelope<Inspection[]>>(`/api/inspections${query ? `?${query}` : ''}`).then((res) => ({
+    items: res.data,
+    meta: res.meta,
+  }));
 }
 
 export function getInspection(id: string): Promise<InspectionDetail> {

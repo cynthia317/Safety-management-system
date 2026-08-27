@@ -1,10 +1,12 @@
 import { prisma } from '../../lib/prisma';
 import { nextCounterValue } from '../../lib/counters';
 import * as templateService from '../inspectionTemplates/service';
+import type { PaginationRequest } from '../../lib/pagination';
 import type {
   Inspection as PrismaInspection,
   InspectionActivityEntry as PrismaInspectionActivityEntry,
   QuestionResponse as PrismaQuestionResponse,
+  Prisma,
 } from '@prisma/client';
 import type {
   CreateInspectionInput,
@@ -112,12 +114,65 @@ async function toDetail(row: PrismaInspection): Promise<InspectionDetail> {
   };
 }
 
-export async function listInspections(workplace?: { equals: string; mode: 'insensitive' }): Promise<Inspection[]> {
-  const rows = await prisma.inspection.findMany({
-    where: workplace ? { workplace } : undefined,
-    orderBy: { createdAt: 'desc' },
-  });
-  return rows.map(fromRow);
+// Mirrored by the reminder scheduler (notifications/reminders.ts) to decide which
+// inspections are still "open" enough to be due-soon/overdue candidates.
+export const OPEN_INSPECTION_STATUSES = ['Draft', 'In Progress'];
+
+export interface ListInspectionsFilter {
+  workplace?: { equals: string; mode: 'insensitive' };
+  status?: InspectionStatus;
+  /** Exact (case-insensitive) match against `leadInspector`. */
+  assignedTo?: { equals: string; mode: 'insensitive' };
+  overdue?: boolean;
+  search?: string;
+  sort?: 'newest' | 'oldest' | 'workplace' | 'status';
+  pagination?: PaginationRequest;
+}
+
+function buildWhere(filter: ListInspectionsFilter): Prisma.InspectionWhereInput {
+  const conditions: Prisma.InspectionWhereInput[] = [];
+  if (filter.workplace) conditions.push({ workplace: filter.workplace });
+  if (filter.status) conditions.push({ status: filter.status });
+  if (filter.assignedTo) conditions.push({ leadInspector: filter.assignedTo });
+  if (filter.overdue) {
+    conditions.push({ status: { in: OPEN_INSPECTION_STATUSES }, inspectionDate: { lt: new Date() } });
+  }
+  if (filter.search) {
+    const search = filter.search.trim();
+    if (search) {
+      conditions.push({
+        OR: [
+          { referenceNumber: { contains: search, mode: 'insensitive' } },
+          { title: { contains: search, mode: 'insensitive' } },
+          { workplace: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+  }
+  return conditions.length > 0 ? { AND: conditions } : {};
+}
+
+export async function listInspections(
+  filter: ListInspectionsFilter = {},
+): Promise<{ items: Inspection[]; total: number }> {
+  const where = buildWhere(filter);
+  const orderBy: Prisma.InspectionOrderByWithRelationInput =
+    filter.sort === 'workplace'
+      ? { workplace: 'asc' }
+      : filter.sort === 'status'
+        ? { status: 'asc' }
+        : { createdAt: filter.sort === 'oldest' ? 'asc' : 'desc' };
+
+  if (filter.pagination) {
+    const [rows, total] = await Promise.all([
+      prisma.inspection.findMany({ where, orderBy, skip: filter.pagination.skip, take: filter.pagination.take }),
+      prisma.inspection.count({ where }),
+    ]);
+    return { items: rows.map(fromRow), total };
+  }
+
+  const rows = await prisma.inspection.findMany({ where, orderBy });
+  return { items: rows.map(fromRow), total: rows.length };
 }
 
 export async function getInspectionDetail(id: string): Promise<InspectionDetail | undefined> {

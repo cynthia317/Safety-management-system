@@ -23,7 +23,7 @@ export function InspectionFindingsPanel({ inspectionId }: InspectionFindingsPane
     let cancelled = false;
 
     listFindings({ inspectionId })
-      .then((linked) => {
+      .then(({ items: linked }) => {
         if (cancelled) return;
         setFindings(linked);
       })

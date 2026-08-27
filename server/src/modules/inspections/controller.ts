@@ -4,7 +4,8 @@ import { validateCreateInspection, validateSaveResponses, validateUpdateInspecti
 import { canAccessRecordWorkplace, canManageInspections, workplaceScopeWhere } from '../auth/permissions';
 import { notifyUser } from '../notifications/service';
 import { excludeActor, resolveUserByName, resolveUsersByRole } from '../notifications/recipients';
-import type { Inspection } from './types';
+import { parsePagination, paginationMeta } from '../../lib/pagination';
+import type { Inspection, InspectionStatus } from './types';
 
 async function notifyInspectionAssigned(inspection: Inspection, actorName: string): Promise<void> {
   const inspector = await resolveUserByName(inspection.leadInspector, inspection.workplace);
@@ -49,8 +50,29 @@ function forbiddenWorkplace(res: Response): void {
   forbidden(res, 'You do not have access to this workplace.');
 }
 
+function queryString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 export async function listInspectionsHandler(req: Request, res: Response): Promise<void> {
-  res.json({ data: await inspectionService.listInspections(workplaceScopeWhere(req.user!)) });
+  const pagination = parsePagination(req.query as Record<string, unknown>);
+  const assignedToRaw = queryString(req.query.assignedTo);
+  const assignedTo = assignedToRaw === 'me' ? req.user!.name : assignedToRaw;
+
+  const scopeWhere = workplaceScopeWhere(req.user!);
+  const requestedWorkplace = queryString(req.query.workplace);
+
+  const { items, total } = await inspectionService.listInspections({
+    workplace: scopeWhere ?? (requestedWorkplace ? { equals: requestedWorkplace, mode: 'insensitive' } : undefined),
+    status: queryString(req.query.status) as InspectionStatus | undefined,
+    assignedTo: assignedTo ? { equals: assignedTo, mode: 'insensitive' } : undefined,
+    overdue: req.query.overdue === 'true',
+    search: queryString(req.query.search),
+    sort: queryString(req.query.sort) as 'newest' | 'oldest' | 'workplace' | 'status' | undefined,
+    pagination,
+  });
+
+  res.json({ data: items, ...(pagination ? { meta: paginationMeta(total, pagination) } : {}) });
 }
 
 export async function getInspectionHandler(req: Request, res: Response): Promise<void> {

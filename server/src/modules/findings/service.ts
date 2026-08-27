@@ -1,10 +1,13 @@
 import { prisma } from '../../lib/prisma';
 import { nextCounterValue } from '../../lib/counters';
 import { validateHazardLink, validateInspectionLink, sourceLinkErrorMessage } from '../../lib/sourceLinks';
+import { RISK_RANK, reorderByIds, sortAndPageByRank } from '../../lib/rankSort';
+import type { PaginationRequest } from '../../lib/pagination';
 import type {
   Finding as PrismaFinding,
   FindingActivityEntry as PrismaFindingActivityEntry,
   FindingComment as PrismaFindingComment,
+  Prisma,
 } from '@prisma/client';
 import type {
   CreateFindingCommentInput,
@@ -68,18 +71,70 @@ export interface ListFindingsFilter {
   hazardId?: string;
   inspectionId?: string;
   workplace?: { equals: string; mode: 'insensitive' };
+  status?: FindingStatus;
+  riskLevel?: RiskLevel;
+  assignedTo?: { equals: string; mode: 'insensitive' };
+  overdue?: boolean;
+  /** Ignored if `status` (an exact single status) is also given. */
+  openOnly?: boolean;
+  search?: string;
+  sort?: 'newest' | 'oldest' | 'dueDate' | 'risk';
+  pagination?: PaginationRequest;
 }
 
-export async function listFindings(filter: ListFindingsFilter = {}): Promise<Finding[]> {
-  const rows = await prisma.finding.findMany({
-    where: {
-      ...(filter.hazardId ? { hazardId: filter.hazardId } : {}),
-      ...(filter.inspectionId ? { inspectionId: filter.inspectionId } : {}),
-      ...(filter.workplace ? { workplace: filter.workplace } : {}),
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-  return rows.map(fromRow);
+function buildWhere(filter: ListFindingsFilter): Prisma.FindingWhereInput {
+  const conditions: Prisma.FindingWhereInput[] = [];
+  if (filter.hazardId) conditions.push({ hazardId: filter.hazardId });
+  if (filter.inspectionId) conditions.push({ inspectionId: filter.inspectionId });
+  if (filter.workplace) conditions.push({ workplace: filter.workplace });
+  if (filter.status) conditions.push({ status: filter.status });
+  else if (filter.openOnly) conditions.push({ status: { not: 'Closed' } });
+  if (filter.riskLevel) conditions.push({ riskLevel: filter.riskLevel });
+  if (filter.assignedTo) conditions.push({ assignedTo: filter.assignedTo });
+  if (filter.overdue) conditions.push({ status: { not: 'Closed' }, dueDate: { lt: new Date() } });
+  if (filter.search) {
+    const search = filter.search.trim();
+    if (search) {
+      conditions.push({
+        OR: [
+          { referenceNumber: { contains: search, mode: 'insensitive' } },
+          { title: { contains: search, mode: 'insensitive' } },
+          { location: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+  }
+  return conditions.length > 0 ? { AND: conditions } : {};
+}
+
+export async function listFindings(filter: ListFindingsFilter = {}): Promise<{ items: Finding[]; total: number }> {
+  const where = buildWhere(filter);
+
+  if (filter.sort === 'risk') {
+    const slim = await prisma.finding.findMany({ where, select: { id: true, riskLevel: true, dueDate: true } });
+    const { ids, total } = sortAndPageByRank(
+      slim,
+      (r) => RISK_RANK[r.riskLevel as keyof typeof RISK_RANK],
+      (a, b) => a.dueDate.getTime() - b.dueDate.getTime(),
+      filter.pagination,
+    );
+    const rows = await prisma.finding.findMany({ where: { id: { in: ids } } });
+    return { items: reorderByIds(rows, ids).map(fromRow), total };
+  }
+
+  const orderBy: Prisma.FindingOrderByWithRelationInput =
+    filter.sort === 'dueDate' ? { dueDate: 'asc' } : { createdAt: filter.sort === 'oldest' ? 'asc' : 'desc' };
+
+  if (filter.pagination) {
+    const [rows, total] = await Promise.all([
+      prisma.finding.findMany({ where, orderBy, skip: filter.pagination.skip, take: filter.pagination.take }),
+      prisma.finding.count({ where }),
+    ]);
+    return { items: rows.map(fromRow), total };
+  }
+
+  const rows = await prisma.finding.findMany({ where, orderBy });
+  return { items: rows.map(fromRow), total: rows.length };
 }
 
 export async function getFindingDetail(id: string): Promise<FindingDetail | undefined> {

@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ClipboardCheck,
   FileSearch,
+  ListTodo,
   Wrench,
   ShieldAlert,
   Building2,
@@ -19,6 +20,7 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+  { label: 'My Actions', path: '/my-actions', icon: ListTodo },
   { label: 'Hazard Reports', path: '/hazards', icon: AlertTriangle },
   { label: 'Inspections', path: '/inspections', icon: ClipboardCheck },
   { label: 'Findings', path: '/findings', icon: FileSearch },

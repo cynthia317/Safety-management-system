@@ -21,7 +21,7 @@ export function RiskAssessmentRelatedRecordsPanel({ assessment }: RiskAssessment
     let cancelled = false;
 
     listCorrectiveActions({ riskAssessmentId: assessment.id })
-      .then((linkedActions) => {
+      .then(({ items: linkedActions }) => {
         if (cancelled) return;
         setActions(linkedActions);
       })

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ChevronRight, Plus } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
@@ -8,16 +8,20 @@ import { StatusBadge } from '../components/StatusBadge';
 import { RiskBadge } from '../components/RiskBadge';
 import { EmptyState } from '../components/EmptyState';
 import { Button } from '../components/Button';
+import { Pagination } from '../components/Pagination';
 import { HazardFilters, DEFAULT_HAZARD_FILTERS, type HazardFiltersState } from '../components/hazards/HazardFilters';
 import { HazardQuickTabs, activeTabIdForFilters, filtersForTab } from '../components/hazards/HazardQuickTabs';
 import { HazardCard } from '../components/hazards/HazardCard';
 import { HazardListSkeleton } from '../components/hazards/HazardListSkeleton';
 import { OverdueBadge } from '../components/OverdueBadge';
 import { listHazards } from '../lib/hazardsApi';
+import { listWorkplaces } from '../lib/workplacesApi';
 import { formatRelativeTime } from '../lib/format';
-import { RISK_RANK } from '../lib/hazardOptions';
 import { formatOverdueBy, formatSlaExplanation, isHazardOverdue } from '../lib/hazardSla';
+import type { PaginationMeta } from '../lib/pagination';
 import type { HazardReport } from '../lib/hazardTypes';
+
+const PAGE_SIZE = 20;
 
 const ROW_ACCENT: Record<HazardReport['riskLevel'], string> = {
   Critical: 'border-l-2 border-l-red-500',
@@ -26,30 +30,69 @@ const ROW_ACCENT: Record<HazardReport['riskLevel'], string> = {
   Low: '',
 };
 
-function withinDateRange(reportedAt: string, range: HazardFiltersState['dateRange']): boolean {
-  if (range === 'all') return true;
-  const reportedTime = new Date(reportedAt).getTime();
-  const now = Date.now();
-  const days = range === 'today' ? 1 : range === '7d' ? 7 : 30;
-  return now - reportedTime <= days * 24 * 60 * 60 * 1000;
-}
+const DATE_RANGE_DAYS: Record<HazardFiltersState['dateRange'], number | null> = {
+  all: null,
+  today: 1,
+  '7d': 7,
+  '30d': 30,
+};
 
 export function HazardListPage() {
+  const [searchParams] = useSearchParams();
   const [hazards, setHazards] = useState<HazardReport[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<HazardFiltersState>(DEFAULT_HAZARD_FILTERS);
+  const [filters, setFilters] = useState<HazardFiltersState>(() => ({
+    ...DEFAULT_HAZARD_FILTERS,
+    status: (searchParams.get('status') as HazardFiltersState['status']) ?? DEFAULT_HAZARD_FILTERS.status,
+    risk: (searchParams.get('riskLevel') as HazardFiltersState['risk']) ?? DEFAULT_HAZARD_FILTERS.risk,
+    overdueOnly: searchParams.get('overdue') === 'true',
+  }));
+  // A dashboard deep-link's "open only" (not closed/resolved) intent — separate from
+  // `filters` since there's no single HazardStatus value meaning "open", and it should
+  // drop out the moment the user touches any real filter control.
+  const [openOnly, setOpenOnly] = useState(searchParams.get('openOnly') === 'true');
+  const [page, setPage] = useState(1);
   const [reloadToken, setReloadToken] = useState(0);
+  const [workplaceOptions, setWorkplaceOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    listWorkplaces()
+      .then((workplaces) => setWorkplaceOptions(workplaces.map((w) => w.name).sort()))
+      .catch(() => {
+        // Non-critical — the filter dropdown just stays empty.
+      });
+  }, []);
+
+  const debouncedSearch = useDebouncedValue(filters.search, 300);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    listHazards()
-      .then((data) => {
+    const dateRangeDays = DATE_RANGE_DAYS[filters.dateRange];
+    const reportedAfter = dateRangeDays ? new Date(Date.now() - dateRangeDays * 24 * 60 * 60 * 1000).toISOString() : undefined;
+
+    listHazards({
+      status: filters.status === 'all' ? undefined : filters.status,
+      riskLevel: filters.risk === 'all' ? undefined : filters.risk,
+      workplace: filters.workplace === 'all' ? undefined : filters.workplace,
+      hazardCategory: filters.category === 'all' ? undefined : filters.category,
+      assignedTo: filters.assigned === 'unassigned' ? 'unassigned' : undefined,
+      overdue: filters.overdueOnly || undefined,
+      openOnly: filters.status === 'all' ? openOnly : undefined,
+      reportedAfter,
+      search: debouncedSearch || undefined,
+      sort: filters.sort,
+      page,
+      pageSize: PAGE_SIZE,
+    })
+      .then(({ items, meta: pageMeta }) => {
         if (cancelled) return;
-        setHazards(data);
+        setHazards(items);
+        setMeta(pageMeta ?? null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -63,44 +106,26 @@ export function HazardListPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadToken]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filters.status,
+    filters.risk,
+    filters.workplace,
+    filters.category,
+    filters.assigned,
+    filters.overdueOnly,
+    filters.sort,
+    openOnly,
+    debouncedSearch,
+    page,
+    reloadToken,
+  ]);
 
-  const filtered = useMemo(() => {
-    const search = filters.search.trim().toLowerCase();
-
-    const result = hazards.filter((hazard) => {
-      if (filters.risk !== 'all' && hazard.riskLevel !== filters.risk) return false;
-      if (filters.status !== 'all' && hazard.status !== filters.status) return false;
-      if (filters.workplace !== 'all' && hazard.workplace !== filters.workplace) return false;
-      if (filters.category !== 'all' && hazard.hazardCategory !== filters.category) return false;
-      if (filters.assigned === 'unassigned' && hazard.assignedTo !== '') return false;
-      if (filters.overdueOnly && !isHazardOverdue(hazard)) return false;
-      if (!withinDateRange(hazard.reportedAt, filters.dateRange)) return false;
-      if (search) {
-        const haystack = `${hazard.referenceNumber} ${hazard.title} ${hazard.location}`.toLowerCase();
-        if (!haystack.includes(search)) return false;
-      }
-      return true;
-    });
-
-    result.sort((a, b) => {
-      if (filters.sort === 'risk') {
-        const rankDiff = RISK_RANK[b.riskLevel] - RISK_RANK[a.riskLevel];
-        if (rankDiff !== 0) return rankDiff;
-        return b.reportedAt.localeCompare(a.reportedAt);
-      }
-      return filters.sort === 'newest'
-        ? b.reportedAt.localeCompare(a.reportedAt)
-        : a.reportedAt.localeCompare(b.reportedAt);
-    });
-
-    return result;
-  }, [hazards, filters]);
-
-  const workplaceOptions = useMemo(
-    () => Array.from(new Set(hazards.map((h) => h.workplace).filter(Boolean))).sort(),
-    [hazards],
-  );
+  function updateFilters(next: HazardFiltersState) {
+    setFilters(next);
+    setOpenOnly(false);
+    setPage(1);
+  }
 
   const activeTabId = activeTabIdForFilters(filters);
 
@@ -193,19 +218,19 @@ export function HazardListPage() {
 
       <div className="mb-4">
         <HazardQuickTabs
-          hazards={hazards}
           activeTabId={activeTabId}
-          onSelect={(tab) => setFilters(filtersForTab(tab))}
+          onSelect={(tab) => updateFilters(filtersForTab(tab))}
+          activeCount={meta?.total}
         />
       </div>
 
       <SectionCard
         title="All Hazard Reports"
-        description={loading ? 'Loading…' : `${filtered.length} of ${hazards.length} reports`}
+        description={loading ? 'Loading…' : `${meta?.total ?? hazards.length} report${(meta?.total ?? hazards.length) === 1 ? '' : 's'}`}
         noPadding
       >
         <div className="border-b border-border p-4">
-          <HazardFilters value={filters} onChange={setFilters} workplaceOptions={workplaceOptions} />
+          <HazardFilters value={filters} onChange={updateFilters} workplaceOptions={workplaceOptions} />
         </div>
 
         {loading ? (
@@ -226,26 +251,36 @@ export function HazardListPage() {
             <div className="hidden md:block">
               <DataTable
                 columns={columns}
-                data={filtered}
+                data={hazards}
                 getRowKey={(r) => r.id}
                 getRowClassName={(r) => ROW_ACCENT[r.riskLevel]}
                 emptyMessage="No hazard reports match your filters."
               />
             </div>
             <div className="space-y-2 p-3 md:hidden">
-              {filtered.length === 0 ? (
+              {hazards.length === 0 ? (
                 <EmptyState
                   icon={AlertTriangle}
                   title="No matching reports"
                   description="No hazard reports match your filters."
                 />
               ) : (
-                filtered.map((hazard) => <HazardCard key={hazard.id} hazard={hazard} />)
+                hazards.map((hazard) => <HazardCard key={hazard.id} hazard={hazard} />)
               )}
             </div>
+            {meta && <Pagination meta={meta} onPageChange={setPage} />}
           </>
         )}
       </SectionCard>
     </>
   );
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
 }

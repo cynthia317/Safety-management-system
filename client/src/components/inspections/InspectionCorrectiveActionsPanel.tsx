@@ -20,7 +20,7 @@ export function InspectionCorrectiveActionsPanel({ inspectionId }: InspectionCor
     let cancelled = false;
 
     listCorrectiveActions({ inspectionId })
-      .then((linked) => {
+      .then(({ items: linked }) => {
         if (cancelled) return;
         setActions(linked);
       })

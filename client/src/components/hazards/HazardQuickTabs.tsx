@@ -1,5 +1,3 @@
-import type { HazardReport } from '../../lib/hazardTypes';
-import { isHazardOverdue } from '../../lib/hazardSla';
 import type { HazardFiltersState } from './HazardFilters';
 import { DEFAULT_HAZARD_FILTERS } from './HazardFilters';
 
@@ -20,25 +18,19 @@ export const QUICK_TABS: QuickTab[] = [
   { id: 'resolved', label: 'Resolved', preset: { status: 'Resolved' } },
 ];
 
-function matchesTab(hazard: HazardReport, tab: QuickTab): boolean {
-  if (tab.preset.risk && hazard.riskLevel !== tab.preset.risk) return false;
-  if (tab.preset.status && hazard.status !== tab.preset.status) return false;
-  if (tab.preset.assigned === 'unassigned' && hazard.assignedTo !== '') return false;
-  if (tab.preset.overdueOnly && !isHazardOverdue(hazard)) return false;
-  return true;
-}
-
 interface HazardQuickTabsProps {
-  hazards: HazardReport[];
   activeTabId: string;
   onSelect: (tab: QuickTab) => void;
+  /** Result count for whichever tab is currently active — sourced from the server-paginated
+   * fetch's own total, since filtering now happens server-side rather than over a
+   * client-held full table (each tab's own count would otherwise require its own query). */
+  activeCount?: number;
 }
 
-export function HazardQuickTabs({ hazards, activeTabId, onSelect }: HazardQuickTabsProps) {
+export function HazardQuickTabs({ activeTabId, onSelect, activeCount }: HazardQuickTabsProps) {
   return (
     <div className="flex gap-1.5 overflow-x-auto">
       {QUICK_TABS.map((tab) => {
-        const count = hazards.filter((h) => matchesTab(h, tab)).length;
         const isActive = tab.id === activeTabId;
         const isOverdueTab = tab.id === 'overdue';
 
@@ -52,17 +44,13 @@ export function HazardQuickTabs({ hazards, activeTabId, onSelect }: HazardQuickT
                 ? isOverdueTab
                   ? 'border-red-500/40 bg-red-500/10 text-red-400'
                   : 'border-accent/40 bg-accent/10 text-accent'
-                : isOverdueTab && count > 0
-                  ? 'border-red-500/30 bg-red-500/5 text-red-400 hover:bg-red-500/10'
-                  : 'border-border bg-surface text-body hover:bg-surface-hover hover:text-heading'
+                : 'border-border bg-surface text-body hover:bg-surface-hover hover:text-heading'
             }`}
           >
             {tab.label}
-            <span
-              className={`ml-1.5 ${isActive ? (isOverdueTab ? 'text-red-400/70' : 'text-accent/70') : isOverdueTab && count > 0 ? 'text-red-400/70' : 'text-muted'}`}
-            >
-              {count}
-            </span>
+            {isActive && activeCount !== undefined && (
+              <span className={`ml-1.5 ${isOverdueTab ? 'text-red-400/70' : 'text-accent/70'}`}>{activeCount}</span>
+            )}
           </button>
         );
       })}

@@ -14,6 +14,8 @@ import { workplacesRouter } from './modules/workplaces/routes';
 import { riskAssessmentsRouter } from './modules/riskAssessments/routes';
 import { notificationsRouter } from './modules/notifications/routes';
 import { schedulerRouter } from './modules/notifications/schedulerRoutes';
+import { dashboardRouter } from './modules/dashboard/routes';
+import { myActionsRouter } from './modules/myActions/routes';
 import { authRouter, usersRouter } from './modules/auth/routes';
 import { requireAuth } from './modules/auth/middleware';
 import { verifyOrigin } from './middleware/csrf';
@@ -92,6 +94,8 @@ export function createApp(): Express {
   app.use('/api/workplaces', requireAuth, workplacesRouter);
   app.use('/api/risk-assessments', requireAuth, riskAssessmentsRouter);
   app.use('/api/notifications', requireAuth, notificationsRouter);
+  app.use('/api/dashboard', requireAuth, dashboardRouter);
+  app.use('/api/my-actions', requireAuth, myActionsRouter);
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({

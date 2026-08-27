@@ -8,12 +8,17 @@ import { Tabs, type TabItem } from '../components/Tabs';
 import { OpenItemsByWorkplaceReport } from '../components/reports/OpenItemsByWorkplaceReport';
 import { OverdueCorrectiveActionsReport } from '../components/reports/OverdueCorrectiveActionsReport';
 import { RiskAssessmentSummaryReport } from '../components/reports/RiskAssessmentSummaryReport';
+import { HazardRegisterReport } from '../components/reports/HazardRegisterReport';
+import { CorrectiveActionRegisterReport } from '../components/reports/CorrectiveActionRegisterReport';
+import { InspectionRegisterReport } from '../components/reports/InspectionRegisterReport';
 import { listHazards } from '../lib/hazardsApi';
 import { listFindings } from '../lib/findingsApi';
+import { listInspections } from '../lib/inspectionsApi';
 import { listCorrectiveActions } from '../lib/correctiveActionsApi';
 import { listRiskAssessments } from '../lib/riskAssessmentsApi';
 import type { HazardReport } from '../lib/hazardTypes';
 import type { Finding } from '../lib/findingTypes';
+import type { Inspection } from '../lib/inspectionTypes';
 import type { CorrectiveAction } from '../lib/correctiveActionTypes';
 import type { RiskAssessment } from '../lib/riskAssessmentTypes';
 
@@ -21,11 +26,15 @@ const TABS: TabItem[] = [
   { id: 'open-items', label: 'Open Items by Workplace' },
   { id: 'overdue-actions', label: 'Overdue Corrective Actions' },
   { id: 'risk-summary', label: 'Risk Assessment Summary' },
+  { id: 'hazard-register', label: 'Hazard Register' },
+  { id: 'corrective-action-register', label: 'Corrective Action Register' },
+  { id: 'inspection-register', label: 'Inspection Register' },
 ];
 
 export function ReportsPage() {
   const [hazards, setHazards] = useState<HazardReport[] | null>(null);
   const [findings, setFindings] = useState<Finding[] | null>(null);
+  const [inspections, setInspections] = useState<Inspection[] | null>(null);
   const [correctiveActions, setCorrectiveActions] = useState<CorrectiveAction[] | null>(null);
   const [riskAssessments, setRiskAssessments] = useState<RiskAssessment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,13 +45,14 @@ export function ReportsPage() {
     let cancelled = false;
     setError(null);
 
-    Promise.all([listHazards(), listFindings(), listCorrectiveActions(), listRiskAssessments()])
-      .then(([h, f, c, r]) => {
+    Promise.all([listHazards(), listFindings(), listInspections(), listCorrectiveActions(), listRiskAssessments()])
+      .then(([h, f, i, c, r]) => {
         if (cancelled) return;
-        setHazards(h);
-        setFindings(f);
-        setCorrectiveActions(c);
-        setRiskAssessments(r);
+        setHazards(h.items);
+        setFindings(f.items);
+        setInspections(i.items);
+        setCorrectiveActions(c.items);
+        setRiskAssessments(r.items);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load report data.');
@@ -53,11 +63,11 @@ export function ReportsPage() {
     };
   }, [reloadToken]);
 
-  const loading = !hazards || !findings || !correctiveActions || !riskAssessments;
+  const loading = !hazards || !findings || !inspections || !correctiveActions || !riskAssessments;
 
   return (
     <>
-      <PageHeader title="Reports" description="Canned reports across hazards, findings, corrective actions, and risk assessments." />
+      <PageHeader title="Reports" description="Canned reports and full-record registers across hazards, findings, inspections, corrective actions, and risk assessments." />
 
       <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
 
@@ -82,6 +92,9 @@ export function ReportsPage() {
             )}
             {activeTab === 'overdue-actions' && <OverdueCorrectiveActionsReport correctiveActions={correctiveActions} />}
             {activeTab === 'risk-summary' && <RiskAssessmentSummaryReport riskAssessments={riskAssessments} />}
+            {activeTab === 'hazard-register' && <HazardRegisterReport hazards={hazards} />}
+            {activeTab === 'corrective-action-register' && <CorrectiveActionRegisterReport correctiveActions={correctiveActions} />}
+            {activeTab === 'inspection-register' && <InspectionRegisterReport inspections={inspections} findings={findings} />}
           </>
         )}
       </div>

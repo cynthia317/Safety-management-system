@@ -26,12 +26,12 @@ export function RelatedRecordsPanel({ hazardId }: RelatedRecordsPanelProps) {
     let cancelled = false;
 
     listFindings({ hazardId })
-      .then((linkedFindings) => {
+      .then(({ items: linkedFindings }) => {
         if (cancelled) return;
         setFindings(linkedFindings);
 
         const findingIds = linkedFindings.map((f) => f.id);
-        return listCorrectiveActions({ hazardId, findingId: findingIds }).then((linkedActions) => {
+        return listCorrectiveActions({ hazardId, findingId: findingIds }).then(({ items: linkedActions }) => {
           if (cancelled) return;
           setActions(linkedActions);
         });
@@ -44,7 +44,7 @@ export function RelatedRecordsPanel({ hazardId }: RelatedRecordsPanelProps) {
       });
 
     listRiskAssessments({ hazardId })
-      .then((linked) => {
+      .then(({ items: linked }) => {
         if (!cancelled) setRiskAssessments(linked);
       })
       .catch(() => {

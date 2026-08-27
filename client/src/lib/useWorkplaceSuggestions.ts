@@ -20,7 +20,7 @@ export function useWorkplaceSuggestions(): WorkplaceSuggestions {
     let cancelled = false;
 
     listHazards()
-      .then((hazards) => {
+      .then(({ items: hazards }) => {
         if (cancelled) return;
         setSuggestions({
           workplaces: Array.from(new Set(hazards.map((h) => h.workplace).filter(Boolean))).sort(),

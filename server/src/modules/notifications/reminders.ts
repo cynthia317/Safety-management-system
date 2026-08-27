@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { isDueSoon, isOverdue } from '../../lib/dueDate';
 import { isHazardOverdue } from '../../lib/hazardSla';
+import { OPEN_INSPECTION_STATUSES } from '../inspections/service';
 import { resolveUserByName } from './recipients';
 import { notifyUserOnce } from './service';
 import type { RiskLevel as HazardRiskLevel } from '../hazards/types';
@@ -131,8 +132,6 @@ async function sweepFindings(result: ReminderSweepResult, now: Date, options: Re
     }
   }
 }
-
-const OPEN_INSPECTION_STATUSES = ['Draft', 'In Progress'];
 
 async function sweepInspections(result: ReminderSweepResult, now: Date, options: ReminderSweepOptions): Promise<void> {
   const rows = await prisma.inspection.findMany({

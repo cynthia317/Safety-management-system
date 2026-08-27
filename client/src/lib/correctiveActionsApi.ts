@@ -8,26 +8,49 @@ import type {
   CreateCorrectiveActionPayload,
   UpdateCorrectiveActionPayload,
 } from './correctiveActionTypes';
+import type { ListResult, PaginationMeta } from './pagination';
 
 interface DataEnvelope<T> {
   data: T;
+  meta?: PaginationMeta;
 }
 
-export function listCorrectiveActions(filter?: {
+export interface ListCorrectiveActionsFilter {
   hazardId?: string;
   findingId?: string[];
   inspectionId?: string;
   riskAssessmentId?: string;
-}): Promise<CorrectiveAction[]> {
+  status?: string;
+  priority?: string;
+  workplace?: string;
+  assignedTo?: string;
+  overdue?: boolean;
+  search?: string;
+  sort?: 'newest' | 'oldest' | 'dueDate' | 'priority';
+  page?: number;
+  pageSize?: number;
+}
+
+export function listCorrectiveActions(filter?: ListCorrectiveActionsFilter): Promise<ListResult<CorrectiveAction>> {
   const params = new URLSearchParams();
   if (filter?.hazardId) params.set('hazardId', filter.hazardId);
   for (const id of filter?.findingId ?? []) params.append('findingId', id);
   if (filter?.inspectionId) params.set('inspectionId', filter.inspectionId);
   if (filter?.riskAssessmentId) params.set('riskAssessmentId', filter.riskAssessmentId);
+  if (filter?.status) params.set('status', filter.status);
+  if (filter?.priority) params.set('priority', filter.priority);
+  if (filter?.workplace) params.set('workplace', filter.workplace);
+  if (filter?.assignedTo) params.set('assignedTo', filter.assignedTo);
+  if (filter?.overdue) params.set('overdue', 'true');
+  if (filter?.search) params.set('search', filter.search);
+  if (filter?.sort) params.set('sort', filter.sort);
+  if (filter?.page) params.set('page', String(filter.page));
+  if (filter?.pageSize) params.set('pageSize', String(filter.pageSize));
   const query = params.toString();
-  return apiRequest<DataEnvelope<CorrectiveAction[]>>(`/api/corrective-actions${query ? `?${query}` : ''}`).then(
-    (res) => res.data,
-  );
+  return apiRequest<DataEnvelope<CorrectiveAction[]>>(`/api/corrective-actions${query ? `?${query}` : ''}`).then((res) => ({
+    items: res.data,
+    meta: res.meta,
+  }));
 }
 
 export function getCorrectiveActionStats(): Promise<CorrectiveActionStats> {

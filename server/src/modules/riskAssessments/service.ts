@@ -2,10 +2,12 @@ import { prisma } from '../../lib/prisma';
 import { nextCounterValue } from '../../lib/counters';
 import { validateHazardLink, sourceLinkErrorMessage } from '../../lib/sourceLinks';
 import { computeRiskLevel, computeRiskScore, highestRiskLevel, type RiskLevel } from './riskMatrix';
+import type { PaginationRequest } from '../../lib/pagination';
 import type {
   RiskAssessment as PrismaRiskAssessment,
   RiskAssessmentActivityEntry as PrismaRiskAssessmentActivityEntry,
   RiskAssessmentItem as PrismaRiskAssessmentItem,
+  Prisma,
 } from '@prisma/client';
 import type {
   AssessmentType,
@@ -116,18 +118,64 @@ const WITH_ITEMS = { orderBy: { order: 'asc' as const } };
 export interface ListRiskAssessmentsFilter {
   hazardId?: string;
   workplace?: { equals: string; mode: 'insensitive' };
+  status?: RiskAssessmentStatus;
+  /** Exact (case-insensitive) match against `assessedBy`. */
+  assignedTo?: { equals: string; mode: 'insensitive' };
+  /** `overallRiskLevel` is computed from child items, not a stored column (see `fromRow`),
+   * so it can't be pushed into a Prisma `where`. Filtering by it means fetching every row
+   * matching the other filters first, then filtering/paginating in memory below — a
+   * deliberate, bounded exception, not a missed optimization. */
+  riskLevel?: RiskLevel;
+  search?: string;
+  sort?: 'newest' | 'oldest';
+  pagination?: PaginationRequest;
 }
 
-export async function listRiskAssessments(filter: ListRiskAssessmentsFilter = {}): Promise<RiskAssessment[]> {
-  const rows = await prisma.riskAssessment.findMany({
-    where: {
-      ...(filter.hazardId ? { hazardId: filter.hazardId } : {}),
-      ...(filter.workplace ? { workplace: filter.workplace } : {}),
-    },
-    orderBy: { assessmentDate: 'desc' },
-    include: { items: WITH_ITEMS },
-  });
-  return rows.map((row) => fromRow(row, row.items));
+function buildWhere(filter: ListRiskAssessmentsFilter): Prisma.RiskAssessmentWhereInput {
+  const conditions: Prisma.RiskAssessmentWhereInput[] = [];
+  if (filter.hazardId) conditions.push({ hazardId: filter.hazardId });
+  if (filter.workplace) conditions.push({ workplace: filter.workplace });
+  if (filter.status) conditions.push({ status: filter.status });
+  if (filter.assignedTo) conditions.push({ assessedBy: filter.assignedTo });
+  if (filter.search) {
+    const search = filter.search.trim();
+    if (search) {
+      conditions.push({
+        OR: [
+          { referenceNumber: { contains: search, mode: 'insensitive' } },
+          { title: { contains: search, mode: 'insensitive' } },
+          { workplace: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+  }
+  return conditions.length > 0 ? { AND: conditions } : {};
+}
+
+export async function listRiskAssessments(
+  filter: ListRiskAssessmentsFilter = {},
+): Promise<{ items: RiskAssessment[]; total: number }> {
+  const where = buildWhere(filter);
+  const orderBy: Prisma.RiskAssessmentOrderByWithRelationInput = { assessmentDate: filter.sort === 'oldest' ? 'asc' : 'desc' };
+
+  if (filter.riskLevel) {
+    const rows = await prisma.riskAssessment.findMany({ where, orderBy, include: { items: WITH_ITEMS } });
+    const all = rows.map((row) => fromRow(row, row.items)).filter((a) => a.overallRiskLevel === filter.riskLevel);
+    const total = all.length;
+    const items = filter.pagination ? all.slice(filter.pagination.skip, filter.pagination.skip + filter.pagination.take) : all;
+    return { items, total };
+  }
+
+  if (filter.pagination) {
+    const [rows, total] = await Promise.all([
+      prisma.riskAssessment.findMany({ where, orderBy, skip: filter.pagination.skip, take: filter.pagination.take, include: { items: WITH_ITEMS } }),
+      prisma.riskAssessment.count({ where }),
+    ]);
+    return { items: rows.map((row) => fromRow(row, row.items)), total };
+  }
+
+  const rows = await prisma.riskAssessment.findMany({ where, orderBy, include: { items: WITH_ITEMS } });
+  return { items: rows.map((row) => fromRow(row, row.items)), total: rows.length };
 }
 
 export async function getRiskAssessmentDetail(id: string): Promise<RiskAssessmentDetail | undefined> {

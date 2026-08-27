@@ -2,6 +2,8 @@ import { prisma } from '../../lib/prisma';
 import { nextCounterValue } from '../../lib/counters';
 import { notifyUser } from '../notifications/service';
 import { excludeActor, resolveUserByName, resolveUsersByRole, sameName } from '../notifications/recipients';
+import { RISK_RANK, reorderByIds, sortAndPageByRank } from '../../lib/rankSort';
+import type { PaginationRequest } from '../../lib/pagination';
 import {
   validateFindingLink,
   validateHazardLink,
@@ -167,24 +169,75 @@ export interface ListCorrectiveActionsFilter {
   inspectionId?: string;
   riskAssessmentId?: string;
   workplace?: { equals: string; mode: 'insensitive' };
+  status?: CorrectiveActionStatus;
+  priority?: RiskLevel;
+  assignedTo?: { equals: string; mode: 'insensitive' };
+  overdue?: boolean;
+  search?: string;
+  sort?: 'newest' | 'oldest' | 'dueDate' | 'priority';
+  pagination?: PaginationRequest;
 }
 
-export async function listCorrectiveActions(filter: ListCorrectiveActionsFilter = {}): Promise<CorrectiveAction[]> {
+function buildWhere(filter: ListCorrectiveActionsFilter): Prisma.CorrectiveActionWhereInput {
   const sourceConditions: Prisma.CorrectiveActionWhereInput[] = [];
   if (filter.hazardId) sourceConditions.push({ hazardId: filter.hazardId });
   if (filter.findingIds && filter.findingIds.length > 0) sourceConditions.push({ findingId: { in: filter.findingIds } });
   if (filter.inspectionId) sourceConditions.push({ inspectionId: filter.inspectionId });
   if (filter.riskAssessmentId) sourceConditions.push({ riskAssessmentId: filter.riskAssessmentId });
 
-  const where: Prisma.CorrectiveActionWhereInput = {};
-  if (sourceConditions.length > 0) where.OR = sourceConditions;
-  if (filter.workplace) where.workplace = filter.workplace;
+  const conditions: Prisma.CorrectiveActionWhereInput[] = [];
+  if (sourceConditions.length > 0) conditions.push({ OR: sourceConditions });
+  if (filter.workplace) conditions.push({ workplace: filter.workplace });
+  if (filter.status) conditions.push({ status: filter.status });
+  if (filter.priority) conditions.push({ priority: filter.priority });
+  if (filter.assignedTo) conditions.push({ assignedTo: filter.assignedTo });
+  if (filter.overdue) conditions.push({ status: { not: 'Closed' }, dueDate: { lt: new Date() } });
+  if (filter.search) {
+    const search = filter.search.trim();
+    if (search) {
+      conditions.push({
+        OR: [
+          { referenceNumber: { contains: search, mode: 'insensitive' } },
+          { title: { contains: search, mode: 'insensitive' } },
+          { location: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+  }
 
-  const rows = await prisma.correctiveAction.findMany({
-    where: Object.keys(where).length > 0 ? where : undefined,
-    orderBy: { createdAt: 'desc' },
-  });
-  return rows.map(fromRow);
+  return conditions.length > 0 ? { AND: conditions } : {};
+}
+
+export async function listCorrectiveActions(
+  filter: ListCorrectiveActionsFilter = {},
+): Promise<{ items: CorrectiveAction[]; total: number }> {
+  const where = buildWhere(filter);
+
+  if (filter.sort === 'priority') {
+    const slim = await prisma.correctiveAction.findMany({ where, select: { id: true, priority: true, dueDate: true } });
+    const { ids, total } = sortAndPageByRank(
+      slim,
+      (r) => RISK_RANK[r.priority as keyof typeof RISK_RANK],
+      (a, b) => a.dueDate.getTime() - b.dueDate.getTime(),
+      filter.pagination,
+    );
+    const rows = await prisma.correctiveAction.findMany({ where: { id: { in: ids } } });
+    return { items: reorderByIds(rows, ids).map(fromRow), total };
+  }
+
+  const orderBy: Prisma.CorrectiveActionOrderByWithRelationInput =
+    filter.sort === 'dueDate' ? { dueDate: 'asc' } : { createdAt: filter.sort === 'oldest' ? 'asc' : 'desc' };
+
+  if (filter.pagination) {
+    const [rows, total] = await Promise.all([
+      prisma.correctiveAction.findMany({ where, orderBy, skip: filter.pagination.skip, take: filter.pagination.take }),
+      prisma.correctiveAction.count({ where }),
+    ]);
+    return { items: rows.map(fromRow), total };
+  }
+
+  const rows = await prisma.correctiveAction.findMany({ where, orderBy });
+  return { items: rows.map(fromRow), total: rows.length };
 }
 
 export async function getCorrectiveActionDetail(id: string): Promise<CorrectiveActionDetail | undefined> {

@@ -11,7 +11,7 @@ export const REVIEW_SLA_HOURS: Record<RiskLevel, number> = {
   Low: 168,
 };
 
-const OPEN_STATUSES = ['New', 'Under Review', 'Action Required'];
+export const OPEN_STATUSES = ['New', 'Under Review', 'Action Required'];
 
 export function isHazardOverdue(hazard: { status: string; riskLevel: RiskLevel; reportedAt: Date }, now: Date = new Date()): boolean {
   if (!OPEN_STATUSES.includes(hazard.status)) return false;

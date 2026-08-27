@@ -21,7 +21,7 @@ export function FindingRelatedRecordsPanel({ finding }: FindingRelatedRecordsPan
     let cancelled = false;
 
     listCorrectiveActions({ findingId: [finding.id] })
-      .then((linkedActions) => {
+      .then(({ items: linkedActions }) => {
         if (cancelled) return;
         setActions(linkedActions);
       })

@@ -10,6 +10,8 @@ import {
   canVerifyCorrectiveAction,
   workplaceScopeWhere,
 } from '../auth/permissions';
+import { parsePagination, paginationMeta } from '../../lib/pagination';
+import type { CorrectiveActionStatus, RiskLevel } from './types';
 
 function forbidden(res: Response, message = 'You do not have permission to do this.'): void {
   res.status(403).json({ error: { code: 'FORBIDDEN', message } });
@@ -19,10 +21,14 @@ function forbiddenWorkplace(res: Response): void {
   forbidden(res, 'You do not have access to this workplace.');
 }
 
+function queryString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 export async function listCorrectiveActionsHandler(req: Request, res: Response): Promise<void> {
-  const hazardId = typeof req.query.hazardId === 'string' ? req.query.hazardId : undefined;
-  const inspectionId = typeof req.query.inspectionId === 'string' ? req.query.inspectionId : undefined;
-  const riskAssessmentId = typeof req.query.riskAssessmentId === 'string' ? req.query.riskAssessmentId : undefined;
+  const hazardId = queryString(req.query.hazardId);
+  const inspectionId = queryString(req.query.inspectionId);
+  const riskAssessmentId = queryString(req.query.riskAssessmentId);
   const findingIdParam = req.query.findingId;
   const findingIds = Array.isArray(findingIdParam)
     ? findingIdParam.filter((v): v is string => typeof v === 'string')
@@ -30,15 +36,29 @@ export async function listCorrectiveActionsHandler(req: Request, res: Response):
       ? [findingIdParam]
       : undefined;
 
-  res.json({
-    data: await actionService.listCorrectiveActions({
-      hazardId,
-      findingIds,
-      inspectionId,
-      riskAssessmentId,
-      workplace: workplaceScopeWhere(req.user!),
-    }),
+  const pagination = parsePagination(req.query as Record<string, unknown>);
+  const assignedToRaw = queryString(req.query.assignedTo);
+  const assignedTo = assignedToRaw === 'me' ? req.user!.name : assignedToRaw;
+
+  const scopeWhere = workplaceScopeWhere(req.user!);
+  const requestedWorkplace = queryString(req.query.workplace);
+
+  const { items, total } = await actionService.listCorrectiveActions({
+    hazardId,
+    findingIds,
+    inspectionId,
+    riskAssessmentId,
+    workplace: scopeWhere ?? (requestedWorkplace ? { equals: requestedWorkplace, mode: 'insensitive' } : undefined),
+    status: queryString(req.query.status) as CorrectiveActionStatus | undefined,
+    priority: queryString(req.query.priority) as RiskLevel | undefined,
+    assignedTo: assignedTo ? { equals: assignedTo, mode: 'insensitive' } : undefined,
+    overdue: req.query.overdue === 'true',
+    search: queryString(req.query.search),
+    sort: queryString(req.query.sort) as 'newest' | 'oldest' | 'dueDate' | 'priority' | undefined,
+    pagination,
   });
+
+  res.json({ data: items, ...(pagination ? { meta: paginationMeta(total, pagination) } : {}) });
 }
 
 export async function getCorrectiveActionHandler(req: Request, res: Response): Promise<void> {
