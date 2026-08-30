@@ -52,12 +52,14 @@ export interface DashboardSummary {
   overdueActions: number;
   oldestOverdueDays: number;
   actionsAwaitingVerification: number;
-  criticalRisks: number;
-  criticalWorkplaces: number;
+  criticalHazards: number;
+  criticalHazardWorkplaces: number;
   inspectionsThisMonth: number;
   inspectionsCompletedThisMonth: number;
   inspectionsUpcomingThisMonth: number;
   inspectionsDueSoon: number;
+  thisMonthStart: string;
+  thisMonthEnd: string;
   closureRate: number;
   recentHazards: DashboardHazardSummary[];
   criticalFindings: DashboardFindingSummary[];

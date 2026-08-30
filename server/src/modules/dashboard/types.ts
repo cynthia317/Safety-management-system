@@ -55,12 +55,16 @@ export interface DashboardSummary {
   overdueActions: number;
   oldestOverdueDays: number;
   actionsAwaitingVerification: number;
-  criticalRisks: number;
-  criticalWorkplaces: number;
+  criticalHazards: number;
+  criticalHazardWorkplaces: number;
   inspectionsThisMonth: number;
   inspectionsCompletedThisMonth: number;
   inspectionsUpcomingThisMonth: number;
   inspectionsDueSoon: number;
+  /** ISO bounds of the "this month" window used for `inspectionsThisMonth` — `thisMonthEnd`
+   * is exclusive — so the client can deep-link to a list filtered by the exact same range. */
+  thisMonthStart: string;
+  thisMonthEnd: string;
   closureRate: number;
   recentHazards: DashboardHazardSummary[];
   criticalFindings: DashboardFindingSummary[];

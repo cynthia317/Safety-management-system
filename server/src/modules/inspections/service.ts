@@ -121,9 +121,16 @@ export const OPEN_INSPECTION_STATUSES = ['Draft', 'In Progress'];
 export interface ListInspectionsFilter {
   workplace?: { equals: string; mode: 'insensitive' };
   status?: InspectionStatus;
+  templateId?: string;
   /** Exact (case-insensitive) match against `leadInspector`. */
   assignedTo?: { equals: string; mode: 'insensitive' };
   overdue?: boolean;
+  /** Inclusive lower bound on `inspectionDate`. */
+  dateFrom?: Date;
+  /** Exclusive upper bound on `inspectionDate` — matches the dashboard's own
+   * [monthStart, monthEnd) convention for "this month" so a count and its deep-linked
+   * list always agree on the same boundary. */
+  dateTo?: Date;
   search?: string;
   sort?: 'newest' | 'oldest' | 'workplace' | 'status';
   pagination?: PaginationRequest;
@@ -133,7 +140,10 @@ function buildWhere(filter: ListInspectionsFilter): Prisma.InspectionWhereInput 
   const conditions: Prisma.InspectionWhereInput[] = [];
   if (filter.workplace) conditions.push({ workplace: filter.workplace });
   if (filter.status) conditions.push({ status: filter.status });
+  if (filter.templateId) conditions.push({ templateId: filter.templateId });
   if (filter.assignedTo) conditions.push({ leadInspector: filter.assignedTo });
+  if (filter.dateFrom) conditions.push({ inspectionDate: { gte: filter.dateFrom } });
+  if (filter.dateTo) conditions.push({ inspectionDate: { lt: filter.dateTo } });
   if (filter.overdue) {
     conditions.push({ status: { in: OPEN_INSPECTION_STATUSES }, inspectionDate: { lt: new Date() } });
   }
@@ -173,6 +183,30 @@ export async function listInspections(
 
   const rows = await prisma.inspection.findMany({ where, orderBy });
   return { items: rows.map(fromRow), total: rows.length };
+}
+
+/**
+ * Distinct lead inspectors for the caller's accessible scope, independent of any list
+ * pagination/filtering — backs the "Inspector" filter dropdown, which must offer every
+ * inspector at the workplace(s) the caller can see, not just those on the currently
+ * loaded page of inspections.
+ */
+export async function listLeadInspectors(workplace?: { equals: string; mode: 'insensitive' }): Promise<string[]> {
+  const rows = await prisma.inspection.findMany({
+    where: { ...(workplace ? { workplace } : {}), leadInspector: { not: '' } },
+    select: { leadInspector: true },
+    distinct: ['leadInspector'],
+  });
+
+  const byLowerCase = new Map<string, string>();
+  for (const row of rows) {
+    const name = row.leadInspector.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (!byLowerCase.has(key)) byLowerCase.set(key, name);
+  }
+
+  return Array.from(byLowerCase.values()).sort((a, b) => a.localeCompare(b));
 }
 
 export async function getInspectionDetail(id: string): Promise<InspectionDetail | undefined> {

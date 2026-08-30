@@ -277,10 +277,15 @@ describe('Phase 3 — notification completion', () => {
       });
       const caId = caRes.body.data.id;
 
-      const firstSweep = await runReminderSweep();
+      // Scoped to this test's own workplace — an unscoped sweep would also walk every
+      // open hazard/finding/inspection/corrective-action across the whole shared dev
+      // database (see ReminderSweepOptions.workplace's own doc comment), which is both
+      // unrelated to what this test verifies and, against a remote Postgres instance,
+      // slow enough (one sequential round trip per row) to blow past the test timeout.
+      const firstSweep = await runReminderSweep(new Date(), { workplace });
       expect(firstSweep.byType.corrective_action_overdue ?? 0).toBeGreaterThanOrEqual(1);
 
-      const secondSweep = await runReminderSweep();
+      const secondSweep = await runReminderSweep(new Date(), { workplace });
       expect(secondSweep.byType.corrective_action_overdue ?? 0).toBe(0);
 
       const notifications = await notificationsFor(assignee);
@@ -306,10 +311,42 @@ describe('Phase 3 — notification completion', () => {
       await withOrigin(ehsOfficer.agent.patch(`/api/corrective-actions/${caId}`)).send({ status: 'Verified', actor: ehsOfficer.name });
       await withOrigin(ehsOfficer.agent.patch(`/api/corrective-actions/${caId}`)).send({ status: 'Closed', actor: ehsOfficer.name });
 
-      await runReminderSweep();
+      await runReminderSweep(new Date(), { workplace });
 
       const notifications = await notificationsFor(assignee);
       expect(notifications.find((n) => n.relatedEntityId === caId && n.type === 'corrective_action_overdue')).toBeUndefined();
+    });
+
+    it('resolves the overdue reminder recipient by workplace, not just by name', async () => {
+      // Same display name as `assignee` (at `workplace`), but this action lives at
+      // `otherWorkplace` and is assigned to the same-named user there — the sweep must
+      // notify that user, never `assignee`.
+      // Created by sameNameWrongWorkplace (a Supervisor, who can create corrective actions)
+      // rather than ehsOfficer — ehsOfficer belongs to `workplace`, not `otherWorkplace`,
+      // and would be blocked by workplace-access authorization from creating a record there.
+      const caRes = await withOrigin(sameNameWrongWorkplace.agent.post('/api/corrective-actions')).send({
+        title: `${otherWorkplace} CA for cross-workplace name collision`,
+        description: 'Phase 3 reminder workplace-scoping test.',
+        workplace: otherWorkplace,
+        department: 'Test dept',
+        location: 'Test location',
+        priority: 'Medium',
+        assignedTo: sameNameWrongWorkplace.name,
+        dueDate: '2020-01-01',
+        createdBy: sameNameWrongWorkplace.name,
+      });
+      expect(caRes.status).toBe(201);
+      const caId = caRes.body.data.id;
+
+      await runReminderSweep(new Date(), { workplace: otherWorkplace });
+
+      const correctRecipientNotifications = await notificationsFor(sameNameWrongWorkplace);
+      const match = correctRecipientNotifications.find((n) => n.relatedEntityId === caId && n.type === 'corrective_action_overdue');
+      expect(match).toBeTruthy();
+      expect(match!.recipientId).toBe(sameNameWrongWorkplace.id);
+
+      const wrongWorkplaceNotifications = await notificationsFor(assignee);
+      expect(wrongWorkplaceNotifications.find((n) => n.relatedEntityId === caId)).toBeUndefined();
     });
   });
 });

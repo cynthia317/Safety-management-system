@@ -21,7 +21,7 @@ import {
 import { InspectionCard } from '../components/inspections/InspectionCard';
 import { InspectionListSkeleton } from '../components/inspections/InspectionListSkeleton';
 import { InspectionProgressBar } from '../components/inspections/InspectionProgressBar';
-import { listInspections } from '../lib/inspectionsApi';
+import { listInspections, listLeadInspectors } from '../lib/inspectionsApi';
 import { listTemplates } from '../lib/inspectionTemplatesApi';
 import { listWorkplaces } from '../lib/workplacesApi';
 import { computeOverallProgress } from '../lib/inspectionProgress';
@@ -47,6 +47,7 @@ export function InspectionListPage() {
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [templates, setTemplates] = useState<InspectionTemplate[]>([]);
   const [workplaceOptions, setWorkplaceOptions] = useState<string[]>([]);
+  const [inspectorOptions, setInspectorOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<InspectionFiltersState>(() => ({
@@ -54,6 +55,8 @@ export function InspectionListPage() {
     status: (searchParams.get('status') as InspectionFiltersState['status']) ?? DEFAULT_INSPECTION_FILTERS.status,
   }));
   const [overdueOnly] = useState(searchParams.get('overdue') === 'true');
+  const [dateFrom] = useState(searchParams.get('from') ?? undefined);
+  const [dateTo] = useState(searchParams.get('to') ?? undefined);
   const [page, setPage] = useState(1);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -68,6 +71,13 @@ export function InspectionListPage() {
       .catch(() => {
         // Non-critical — the workplace filter dropdown just stays empty.
       });
+    // Workplace-scoped and independent of the current page/filters, unlike deriving
+    // options from the loaded inspections — see server/src/modules/inspections/service.ts#listLeadInspectors.
+    listLeadInspectors()
+      .then(setInspectorOptions)
+      .catch(() => {
+        // Non-critical — the inspector filter dropdown just stays empty.
+      });
   }, []);
 
   const debouncedSearch = useDebouncedValue(filters.search, 300);
@@ -79,9 +89,12 @@ export function InspectionListPage() {
 
     listInspections({
       status: filters.status === 'all' ? undefined : filters.status,
+      templateId: filters.templateId === 'all' ? undefined : filters.templateId,
       workplace: filters.workplace === 'all' ? undefined : filters.workplace,
       assignedTo: filters.inspector === 'all' ? undefined : filters.inspector,
       overdue: overdueOnly || undefined,
+      from: dateFrom,
+      to: dateTo,
       search: debouncedSearch || undefined,
       sort: filters.sort,
       page,
@@ -89,11 +102,7 @@ export function InspectionListPage() {
     })
       .then(({ items, meta: pageMeta }) => {
         if (cancelled) return;
-        // Template filtering has no server-side equivalent yet (no templateId query param) —
-        // applied client-side over the current page only, which is an acceptable, documented
-        // exception given how rarely it's combined with other filters in practice.
-        const filtered = filters.templateId === 'all' ? items : items.filter((i) => i.templateId === filters.templateId);
-        setInspections(filtered);
+        setInspections(items);
         setMeta(pageMeta ?? null);
       })
       .catch((err: unknown) => {
@@ -108,17 +117,13 @@ export function InspectionListPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.status, filters.workplace, filters.inspector, filters.templateId, filters.sort, overdueOnly, debouncedSearch, page, reloadToken]);
+  }, [filters.status, filters.workplace, filters.inspector, filters.templateId, filters.sort, overdueOnly, dateFrom, dateTo, debouncedSearch, page, reloadToken]);
 
   function updateFilters(next: InspectionFiltersState) {
     setFilters(next);
     setPage(1);
   }
 
-  const inspectorOptions = useMemo(
-    () => Array.from(new Set(inspections.map((i) => i.leadInspector).filter(Boolean))).sort(),
-    [inspections],
-  );
   const templateOptions = useMemo(
     () => templates.map((t) => ({ id: t.id, name: t.name })).sort((a, b) => a.name.localeCompare(b.name)),
     [templates],

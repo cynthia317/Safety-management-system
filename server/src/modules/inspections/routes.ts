@@ -3,6 +3,7 @@ import {
   createInspectionHandler,
   getInspectionHandler,
   listInspectionsHandler,
+  listLeadInspectorsHandler,
   saveResponsesHandler,
   submitInspectionHandler,
   updateInspectionHandler,
@@ -12,6 +13,8 @@ import { createFindingFromResponseHandler } from '../findings/controller';
 export const inspectionsRouter = Router();
 
 inspectionsRouter.get('/', listInspectionsHandler);
+// Must be registered before '/:id' — otherwise Express would treat "lead-inspectors" as an :id value.
+inspectionsRouter.get('/lead-inspectors', listLeadInspectorsHandler);
 inspectionsRouter.get('/:id', getInspectionHandler);
 inspectionsRouter.post('/', createInspectionHandler);
 inspectionsRouter.patch('/:id', updateInspectionHandler);

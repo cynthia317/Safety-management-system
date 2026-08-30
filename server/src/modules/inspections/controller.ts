@@ -54,6 +54,13 @@ function queryString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function queryDate(value: unknown): Date | undefined {
+  const raw = queryString(value);
+  if (!raw) return undefined;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 export async function listInspectionsHandler(req: Request, res: Response): Promise<void> {
   const pagination = parsePagination(req.query as Record<string, unknown>);
   const assignedToRaw = queryString(req.query.assignedTo);
@@ -65,14 +72,28 @@ export async function listInspectionsHandler(req: Request, res: Response): Promi
   const { items, total } = await inspectionService.listInspections({
     workplace: scopeWhere ?? (requestedWorkplace ? { equals: requestedWorkplace, mode: 'insensitive' } : undefined),
     status: queryString(req.query.status) as InspectionStatus | undefined,
+    templateId: queryString(req.query.templateId),
     assignedTo: assignedTo ? { equals: assignedTo, mode: 'insensitive' } : undefined,
     overdue: req.query.overdue === 'true',
+    dateFrom: queryDate(req.query.from),
+    dateTo: queryDate(req.query.to),
     search: queryString(req.query.search),
     sort: queryString(req.query.sort) as 'newest' | 'oldest' | 'workplace' | 'status' | undefined,
     pagination,
   });
 
   res.json({ data: items, ...(pagination ? { meta: paginationMeta(total, pagination) } : {}) });
+}
+
+export async function listLeadInspectorsHandler(req: Request, res: Response): Promise<void> {
+  const scopeWhere = workplaceScopeWhere(req.user!);
+  const requestedWorkplace = queryString(req.query.workplace);
+
+  const inspectors = await inspectionService.listLeadInspectors(
+    scopeWhere ?? (requestedWorkplace ? { equals: requestedWorkplace, mode: 'insensitive' } : undefined),
+  );
+
+  res.json({ data: inspectors });
 }
 
 export async function getInspectionHandler(req: Request, res: Response): Promise<void> {

@@ -16,9 +16,13 @@ interface DataEnvelope<T> {
 
 export interface ListInspectionsFilter {
   status?: string;
+  templateId?: string;
   workplace?: string;
   assignedTo?: string;
   overdue?: boolean;
+  /** ISO date/datetime strings — inclusive lower bound / exclusive upper bound on inspectionDate. */
+  from?: string;
+  to?: string;
   search?: string;
   sort?: 'newest' | 'oldest' | 'workplace' | 'status';
   page?: number;
@@ -28,9 +32,12 @@ export interface ListInspectionsFilter {
 export function listInspections(filter?: ListInspectionsFilter): Promise<ListResult<Inspection>> {
   const params = new URLSearchParams();
   if (filter?.status) params.set('status', filter.status);
+  if (filter?.templateId) params.set('templateId', filter.templateId);
   if (filter?.workplace) params.set('workplace', filter.workplace);
   if (filter?.assignedTo) params.set('assignedTo', filter.assignedTo);
   if (filter?.overdue) params.set('overdue', 'true');
+  if (filter?.from) params.set('from', filter.from);
+  if (filter?.to) params.set('to', filter.to);
   if (filter?.search) params.set('search', filter.search);
   if (filter?.sort) params.set('sort', filter.sort);
   if (filter?.page) params.set('page', String(filter.page));
@@ -40,6 +47,15 @@ export function listInspections(filter?: ListInspectionsFilter): Promise<ListRes
     items: res.data,
     meta: res.meta,
   }));
+}
+
+export function listLeadInspectors(workplace?: string): Promise<string[]> {
+  const params = new URLSearchParams();
+  if (workplace) params.set('workplace', workplace);
+  const query = params.toString();
+  return apiRequest<DataEnvelope<string[]>>(`/api/inspections/lead-inspectors${query ? `?${query}` : ''}`).then(
+    (res) => res.data,
+  );
 }
 
 export function getInspection(id: string): Promise<InspectionDetail> {

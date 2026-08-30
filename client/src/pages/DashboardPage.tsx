@@ -252,21 +252,20 @@ export function DashboardPage() {
         />
         <LinkedStatCard
           to="/hazards?openOnly=true&riskLevel=Critical"
-          label="Critical Risks"
-          value={summary.criticalRisks}
-          hint={`Across ${summary.criticalWorkplaces} workplace${summary.criticalWorkplaces === 1 ? '' : 's'}`}
+          label="Critical Hazards"
+          value={summary.criticalHazards}
+          hint={`Across ${summary.criticalHazardWorkplaces} workplace${summary.criticalHazardWorkplaces === 1 ? '' : 's'}`}
           icon={ShieldAlert}
           tone="danger"
         />
-        <Link to="/inspections" className="block rounded-md transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
-          <StatCard
-            label="Inspections This Month"
-            value={summary.inspectionsThisMonth}
-            hint={`${summary.inspectionsCompletedThisMonth} completed, ${summary.inspectionsUpcomingThisMonth} in progress`}
-            icon={ClipboardCheck}
-            tone="accent"
-          />
-        </Link>
+        <LinkedStatCard
+          to={`/inspections?from=${encodeURIComponent(summary.thisMonthStart)}&to=${encodeURIComponent(summary.thisMonthEnd)}`}
+          label="Inspections This Month"
+          value={summary.inspectionsThisMonth}
+          hint={`${summary.inspectionsCompletedThisMonth} completed, ${summary.inspectionsUpcomingThisMonth} in progress`}
+          icon={ClipboardCheck}
+          tone="accent"
+        />
         <StatCard
           label="Closure Rate"
           value={`${summary.closureRate}%`}

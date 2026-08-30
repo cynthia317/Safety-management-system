@@ -469,6 +469,24 @@ function isOverdue(action: StatsRow, now: number): boolean {
   return action.status !== 'Closed' && action.dueDate.getTime() < now;
 }
 
+/**
+ * Closure rate alone, via two bounded COUNT queries rather than fetching every row —
+ * used by the Dashboard, which only needs this one number and shouldn't pay for
+ * `getCorrectiveActionStats`'s full-table scan (department breakdowns, monthly trend,
+ * average closure duration, etc.) just to read one field off it. Semantics are identical
+ * to `getCorrectiveActionStats`'s `closureRate`: closed / all workplace-scoped corrective
+ * actions, as a percentage rounded to one decimal place, or 0 when there are none.
+ */
+export async function getCorrectiveActionClosureRate(workplace?: { equals: string; mode: 'insensitive' }): Promise<number> {
+  const where: Prisma.CorrectiveActionWhereInput = workplace ? { workplace } : {};
+  const [totalActions, totalClosed] = await Promise.all([
+    prisma.correctiveAction.count({ where }),
+    prisma.correctiveAction.count({ where: { ...where, status: 'Closed' } }),
+  ]);
+
+  return totalActions > 0 ? Math.round((totalClosed / totalActions) * 1000) / 10 : 0;
+}
+
 export async function getCorrectiveActionStats(workplace?: { equals: string; mode: 'insensitive' }): Promise<CorrectiveActionStats> {
   // Aggregation only needs these six columns, not the full row (title/description/notes
   // etc.) — selecting just these cuts the data pulled from and parsed off every row.
