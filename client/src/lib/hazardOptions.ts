@@ -1,9 +1,11 @@
 import type { HazardCategory, HazardStatus, ReportType, RiskLevel } from './hazardTypes';
 
+// 'Near Miss' is deliberately excluded (Phase 6 decision) — near-miss reporting now
+// belongs to the Incidents module. Historical hazard reports with reportType='Near Miss'
+// still display correctly; this list only controls what a new/edited report may select.
 export const REPORT_TYPES: ReportType[] = [
   'Unsafe Condition',
   'Unsafe Act',
-  'Near Miss',
   'Equipment Defect',
   'Environmental Concern',
   'Positive Safety Observation',

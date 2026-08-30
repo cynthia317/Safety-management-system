@@ -28,6 +28,7 @@ export async function getDashboardSummary(workplace: WorkplaceFilter): Promise<D
     workplace,
   );
   const inspectionOpenWhere: Prisma.InspectionWhereInput = withWorkplace({ status: { in: OPEN_INSPECTION_STATUSES } }, workplace);
+  const incidentOpenWhere: Prisma.IncidentWhereInput = withWorkplace({ status: { notIn: ['Resolved', 'Closed'] } }, workplace);
 
   const [
     openHazards,
@@ -43,6 +44,9 @@ export async function getDashboardSummary(workplace: WorkplaceFilter): Promise<D
     inspectionsCompletedThisMonth,
     inspectionsDueSoon,
     closureRate,
+    openIncidents,
+    highPotentialEvents,
+    nearMissesThisMonth,
     recentHazardsRaw,
     criticalFindingsRaw,
     overdueCorrectiveActionsRaw,
@@ -63,6 +67,15 @@ export async function getDashboardSummary(workplace: WorkplaceFilter): Promise<D
     }),
     prisma.inspection.count({ where: { ...inspectionOpenWhere, inspectionDate: { gte: now, lte: dueSoonCutoff } } }),
     getCorrectiveActionClosureRate(workplace),
+    prisma.incident.count({ where: incidentOpenWhere }),
+    // Same condition the "High-Potential Events" card must link to — open Incident/NearMiss
+    // records with potentialSeverity in (High, Critical). Kept as one combined WHERE, not a
+    // separate open-count times a separate severity-count, so count and destination can
+    // never drift apart (see incidents/service.ts#ListIncidentsFilter.highPotential).
+    prisma.incident.count({ where: { ...incidentOpenWhere, potentialSeverity: { in: ['High', 'Critical'] } } }),
+    prisma.incident.count({
+      where: withWorkplace({ eventType: 'NearMiss', eventDate: { gte: monthStart, lt: monthEnd } }, workplace),
+    }),
     prisma.hazardReport.findMany({
       where: withWorkplace({}, workplace),
       orderBy: { reportedAt: 'desc' },
@@ -124,6 +137,9 @@ export async function getDashboardSummary(workplace: WorkplaceFilter): Promise<D
     thisMonthStart: monthStart.toISOString(),
     thisMonthEnd: monthEnd.toISOString(),
     closureRate,
+    openIncidents,
+    highPotentialEvents,
+    nearMissesThisMonth,
     recentHazards: recentHazardsRaw.map((r) => ({ ...r, reportedAt: r.reportedAt.toISOString() })),
     criticalFindings: criticalFindingsRaw.map((r) => ({ ...r, dueDate: r.dueDate.toISOString() })),
     overdueCorrectiveActions: overdueCorrectiveActionsRaw.map((r) => ({ ...r, dueDate: r.dueDate.toISOString() })),

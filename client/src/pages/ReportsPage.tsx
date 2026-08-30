@@ -11,16 +11,19 @@ import { RiskAssessmentSummaryReport } from '../components/reports/RiskAssessmen
 import { HazardRegisterReport } from '../components/reports/HazardRegisterReport';
 import { CorrectiveActionRegisterReport } from '../components/reports/CorrectiveActionRegisterReport';
 import { InspectionRegisterReport } from '../components/reports/InspectionRegisterReport';
+import { IncidentRegisterReport } from '../components/reports/IncidentRegisterReport';
 import { listHazards } from '../lib/hazardsApi';
 import { listFindings } from '../lib/findingsApi';
 import { listInspections } from '../lib/inspectionsApi';
 import { listCorrectiveActions } from '../lib/correctiveActionsApi';
 import { listRiskAssessments } from '../lib/riskAssessmentsApi';
+import { listIncidents } from '../lib/incidentsApi';
 import type { HazardReport } from '../lib/hazardTypes';
 import type { Finding } from '../lib/findingTypes';
 import type { Inspection } from '../lib/inspectionTypes';
 import type { CorrectiveAction } from '../lib/correctiveActionTypes';
 import type { RiskAssessment } from '../lib/riskAssessmentTypes';
+import type { Incident } from '../lib/incidentTypes';
 
 const TABS: TabItem[] = [
   { id: 'open-items', label: 'Open Items by Workplace' },
@@ -29,6 +32,7 @@ const TABS: TabItem[] = [
   { id: 'hazard-register', label: 'Hazard Register' },
   { id: 'corrective-action-register', label: 'Corrective Action Register' },
   { id: 'inspection-register', label: 'Inspection Register' },
+  { id: 'incident-register', label: 'Incident Register' },
 ];
 
 export function ReportsPage() {
@@ -37,6 +41,7 @@ export function ReportsPage() {
   const [inspections, setInspections] = useState<Inspection[] | null>(null);
   const [correctiveActions, setCorrectiveActions] = useState<CorrectiveAction[] | null>(null);
   const [riskAssessments, setRiskAssessments] = useState<RiskAssessment[] | null>(null);
+  const [incidents, setIncidents] = useState<Incident[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('open-items');
   const [reloadToken, setReloadToken] = useState(0);
@@ -45,14 +50,15 @@ export function ReportsPage() {
     let cancelled = false;
     setError(null);
 
-    Promise.all([listHazards(), listFindings(), listInspections(), listCorrectiveActions(), listRiskAssessments()])
-      .then(([h, f, i, c, r]) => {
+    Promise.all([listHazards(), listFindings(), listInspections(), listCorrectiveActions(), listRiskAssessments(), listIncidents()])
+      .then(([h, f, i, c, r, inc]) => {
         if (cancelled) return;
         setHazards(h.items);
         setFindings(f.items);
         setInspections(i.items);
         setCorrectiveActions(c.items);
         setRiskAssessments(r.items);
+        setIncidents(inc.items);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load report data.');
@@ -63,7 +69,7 @@ export function ReportsPage() {
     };
   }, [reloadToken]);
 
-  const loading = !hazards || !findings || !inspections || !correctiveActions || !riskAssessments;
+  const loading = !hazards || !findings || !inspections || !correctiveActions || !riskAssessments || !incidents;
 
   return (
     <>
@@ -95,6 +101,7 @@ export function ReportsPage() {
             {activeTab === 'hazard-register' && <HazardRegisterReport hazards={hazards} />}
             {activeTab === 'corrective-action-register' && <CorrectiveActionRegisterReport correctiveActions={correctiveActions} />}
             {activeTab === 'inspection-register' && <InspectionRegisterReport inspections={inspections} findings={findings} />}
+            {activeTab === 'incident-register' && <IncidentRegisterReport incidents={incidents} />}
           </>
         )}
       </div>

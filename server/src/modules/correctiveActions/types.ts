@@ -30,6 +30,8 @@ export interface CorrectiveAction {
   inspectionReferenceNumber: string | null;
   riskAssessmentId: string | null;
   riskAssessmentReferenceNumber: string | null;
+  incidentId: string | null;
+  incidentReferenceNumber: string | null;
   externalSourceReference: string | null;
   createdBy: string;
   assignedTo: string;
@@ -103,6 +105,8 @@ export interface CreateCorrectiveActionInput {
   inspectionReferenceNumber: string | null;
   riskAssessmentId: string | null;
   riskAssessmentReferenceNumber: string | null;
+  incidentId: string | null;
+  incidentReferenceNumber: string | null;
   externalSourceReference: string | null;
   createdBy: string;
   assignedTo: string;

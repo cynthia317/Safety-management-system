@@ -3,10 +3,12 @@ import { nextCounterValue } from '../../lib/counters';
 import { notifyUser } from '../notifications/service';
 import { excludeActor, resolveUserByName, resolveUsersByRole, sameName } from '../notifications/recipients';
 import { RISK_RANK, reorderByIds, sortAndPageByRank } from '../../lib/rankSort';
+import { recordCorrectiveActionCreated as recordCorrectiveActionCreatedOnIncident } from '../incidents/service';
 import type { PaginationRequest } from '../../lib/pagination';
 import {
   validateFindingLink,
   validateHazardLink,
+  validateIncidentLink,
   validateInspectionLink,
   validateRiskAssessmentLink,
   sourceLinkErrorMessage,
@@ -114,6 +116,8 @@ function fromRow(row: PrismaCorrectiveAction): CorrectiveAction {
     inspectionReferenceNumber: row.inspectionReferenceNumber,
     riskAssessmentId: row.riskAssessmentId,
     riskAssessmentReferenceNumber: row.riskAssessmentReferenceNumber,
+    incidentId: row.incidentId,
+    incidentReferenceNumber: row.incidentReferenceNumber,
     externalSourceReference: row.externalSourceReference,
     createdBy: row.createdBy,
     assignedTo: row.assignedTo,
@@ -168,6 +172,7 @@ export interface ListCorrectiveActionsFilter {
   findingIds?: string[];
   inspectionId?: string;
   riskAssessmentId?: string;
+  incidentId?: string;
   workplace?: { equals: string; mode: 'insensitive' };
   status?: CorrectiveActionStatus;
   priority?: RiskLevel;
@@ -184,6 +189,7 @@ function buildWhere(filter: ListCorrectiveActionsFilter): Prisma.CorrectiveActio
   if (filter.findingIds && filter.findingIds.length > 0) sourceConditions.push({ findingId: { in: filter.findingIds } });
   if (filter.inspectionId) sourceConditions.push({ inspectionId: filter.inspectionId });
   if (filter.riskAssessmentId) sourceConditions.push({ riskAssessmentId: filter.riskAssessmentId });
+  if (filter.incidentId) sourceConditions.push({ incidentId: filter.incidentId });
 
   const conditions: Prisma.CorrectiveActionWhereInput[] = [];
   if (sourceConditions.length > 0) conditions.push({ OR: sourceConditions });
@@ -259,8 +265,8 @@ export async function getCorrectiveActionDetail(id: string): Promise<CorrectiveA
   };
 }
 
-// Mutual exclusivity of findingId/hazardId/inspectionId/riskAssessmentId is already
-// enforced in schema.ts — at most one of these branches runs.
+// Mutual exclusivity of findingId/hazardId/inspectionId/riskAssessmentId/incidentId is
+// already enforced in schema.ts — at most one of these branches runs.
 async function resolveSourceType(input: CreateCorrectiveActionInput): Promise<CorrectiveActionSourceType | { error: string }> {
   if (input.findingId) {
     const result = await validateFindingLink(input.findingId, input.workplace);
@@ -282,8 +288,13 @@ async function resolveSourceType(input: CreateCorrectiveActionInput): Promise<Co
     if (typeof result === 'string') return { error: sourceLinkErrorMessage(result, 'risk assessment') };
     return 'Risk Assessment';
   }
-  // No relational link — keep whatever the client selected (Manual Entry, Audit,
-  // Incident, or a legacy External reference), since those sources have no FK to check.
+  if (input.incidentId) {
+    const result = await validateIncidentLink(input.incidentId, input.workplace);
+    if (typeof result === 'string') return { error: sourceLinkErrorMessage(result, 'incident') };
+    return 'Incident';
+  }
+  // No relational link — keep whatever the client selected (Manual Entry, Audit, or a
+  // legacy External reference), since those sources have no FK to check.
   return input.sourceType;
 }
 
@@ -326,6 +337,14 @@ export async function createCorrectiveAction(input: CreateCorrectiveActionInput)
 
   const action = fromRow(row);
   await notifyAssigned(action, input.createdBy);
+
+  // Mirrors the existing Inspection -> Finding cross-module activity write
+  // (findings/service.ts#createFindingFromInspectionResponse writes a 'finding_created'
+  // entry onto the source Inspection) — server-guaranteed regardless of caller, not
+  // reliant on the client posting a separate follow-up comment.
+  if (action.incidentId) {
+    await recordCorrectiveActionCreatedOnIncident(action.incidentId, action.referenceNumber, input.createdBy);
+  }
 
   return action;
 }

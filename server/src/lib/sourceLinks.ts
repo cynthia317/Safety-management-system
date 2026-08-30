@@ -60,6 +60,14 @@ export async function validateRiskAssessmentLink(riskAssessmentId: string, workp
   return validateLink(row, workplace);
 }
 
+export async function validateIncidentLink(incidentId: string, workplace: string): Promise<ResolvedSource | SourceLinkError> {
+  const row = await prisma.incident.findUnique({
+    where: { id: incidentId },
+    select: { id: true, referenceNumber: true, workplace: true },
+  });
+  return validateLink(row, workplace);
+}
+
 export function sourceLinkErrorMessage(error: SourceLinkError, label: string): string {
   return error === 'NOT_FOUND'
     ? `The referenced ${label} could not be found.`

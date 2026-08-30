@@ -84,6 +84,7 @@ export async function cleanupAllTestData(): Promise<void> {
   const nameLike = { contains: TEST_RUN_PREFIX };
 
   await prisma.correctiveAction.deleteMany({ where: { OR: [{ workplace: workplaceLike }, { title: nameLike }] } });
+  await prisma.incident.deleteMany({ where: { OR: [{ workplace: workplaceLike }, { title: nameLike }] } });
   await prisma.hazardReport.deleteMany({ where: { OR: [{ workplace: workplaceLike }, { title: nameLike }] } });
   await prisma.finding.deleteMany({ where: { OR: [{ workplace: workplaceLike }, { title: nameLike }] } });
   await prisma.riskAssessment.deleteMany({ where: { OR: [{ workplace: workplaceLike }, { title: nameLike }] } });

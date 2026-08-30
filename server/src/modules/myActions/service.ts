@@ -15,6 +15,7 @@ const ROUTE_PREFIX: Record<MyActionModule, string> = {
   inspection: '/inspections',
   risk_assessment: '/risk-assessments',
   corrective_action: '/corrective-actions',
+  incident: '/incidents',
 };
 
 function recentlyCompleted(completedAt: Date | null, now: Date): boolean {
@@ -214,6 +215,39 @@ async function riskAssessmentItems(assignee: AssigneeFilter, now: Date): Promise
   });
 }
 
+// Incident inclusion is deliberately narrower than every other module here: only the
+// assigned lead investigator sees it (never merely the reporter), and only while it's
+// still open — Closed incidents disappear outright rather than lingering in a
+// "recently completed" grace window like Hazard/Finding/CorrectiveAction do. Incidents
+// have no due date at all, so overdue/dueSoon are always false (see incidents/types.ts).
+async function incidentItems(assignee: AssigneeFilter, _now: Date): Promise<MyActionItem[]> {
+  const rows = await prisma.incident.findMany({
+    where: {
+      leadInvestigator: { equals: assignee.name, mode: 'insensitive' },
+      status: { not: 'Closed' },
+      ...(assignee.workplace ? { workplace: assignee.workplace } : {}),
+    },
+    select: { id: true, referenceNumber: true, title: true, status: true, potentialSeverity: true, workplace: true },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    module: 'incident' as const,
+    referenceNumber: r.referenceNumber,
+    title: r.title,
+    status: r.status,
+    priority: r.potentialSeverity as MyActionPriority,
+    dueDate: null,
+    workplace: r.workplace,
+    route: `${ROUTE_PREFIX.incident}/${r.id}`,
+    overdue: false,
+    dueSoon: false,
+    active: r.status === 'Under Investigation' || r.status === 'Action Required',
+    awaitingVerification: false,
+    recentlyCompleted: false,
+  }));
+}
+
 function sortKey(item: MyActionItem): [number, number, number, number] {
   const overdueRank = item.overdue ? 0 : 1;
   const dueSoonRank = !item.overdue && item.dueSoon ? 0 : 1;
@@ -248,22 +282,23 @@ function countsFor(items: MyActionItem[]): MyActionsCounts {
 /**
  * Aggregates every module with a genuine assignment concept (Hazard.assignedTo,
  * Finding.assignedTo, CorrectiveAction.assignedTo, Inspection.leadInspector,
- * RiskAssessment.assessedBy) for one user. `assignee` must already be the authenticated
- * caller's own identity — see myActions/controller.ts, which derives it from the session
- * and never accepts a client-supplied user id.
+ * RiskAssessment.assessedBy, Incident.leadInvestigator) for one user. `assignee` must
+ * already be the authenticated caller's own identity — see myActions/controller.ts, which
+ * derives it from the session and never accepts a client-supplied user id.
  */
 export async function getMyActions(assignee: AssigneeFilter): Promise<MyActionsResponse> {
   const now = new Date();
 
-  const [hazards, findings, correctiveActions, inspections, riskAssessments] = await Promise.all([
+  const [hazards, findings, correctiveActions, inspections, riskAssessments, incidents] = await Promise.all([
     hazardItems(assignee, now),
     findingItems(assignee, now),
     correctiveActionItems(assignee, now),
     inspectionItems(assignee, now),
     riskAssessmentItems(assignee, now),
+    incidentItems(assignee, now),
   ]);
 
-  const items = [...hazards, ...findings, ...correctiveActions, ...inspections, ...riskAssessments].sort(compareItems);
+  const items = [...hazards, ...findings, ...correctiveActions, ...inspections, ...riskAssessments, ...incidents].sort(compareItems);
 
   return { items, counts: countsFor(items) };
 }

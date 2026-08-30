@@ -20,6 +20,7 @@ export interface ListCorrectiveActionsFilter {
   findingId?: string[];
   inspectionId?: string;
   riskAssessmentId?: string;
+  incidentId?: string;
   status?: string;
   priority?: string;
   workplace?: string;
@@ -37,6 +38,7 @@ export function listCorrectiveActions(filter?: ListCorrectiveActionsFilter): Pro
   for (const id of filter?.findingId ?? []) params.append('findingId', id);
   if (filter?.inspectionId) params.set('inspectionId', filter.inspectionId);
   if (filter?.riskAssessmentId) params.set('riskAssessmentId', filter.riskAssessmentId);
+  if (filter?.incidentId) params.set('incidentId', filter.incidentId);
   if (filter?.status) params.set('status', filter.status);
   if (filter?.priority) params.set('priority', filter.priority);
   if (filter?.workplace) params.set('workplace', filter.workplace);

@@ -14,6 +14,9 @@ import { PlaceholderPage } from './pages/PlaceholderPage';
 import { HazardListPage } from './pages/HazardListPage';
 import { NewHazardPage } from './pages/NewHazardPage';
 import { HazardDetailPage } from './pages/HazardDetailPage';
+import { IncidentListPage } from './pages/IncidentListPage';
+import { NewIncidentPage } from './pages/NewIncidentPage';
+import { IncidentDetailPage } from './pages/IncidentDetailPage';
 import { FindingListPage } from './pages/FindingListPage';
 import { NewFindingPage } from './pages/NewFindingPage';
 import { FindingDetailPage } from './pages/FindingDetailPage';
@@ -46,6 +49,7 @@ const placeholderNavItems = navItems.filter(
     item.path !== '/dashboard' &&
     item.path !== '/my-actions' &&
     item.path !== '/hazards' &&
+    item.path !== '/incidents' &&
     item.path !== '/findings' &&
     item.path !== '/inspections' &&
     item.path !== '/corrective-actions' &&
@@ -71,6 +75,10 @@ function App() {
           <Route path="/hazards" element={<HazardListPage />} />
           <Route path="/hazards/new" element={<NewHazardPage />} />
           <Route path="/hazards/:id" element={<HazardDetailPage />} />
+
+          <Route path="/incidents" element={<IncidentListPage />} />
+          <Route path="/incidents/new" element={<NewIncidentPage />} />
+          <Route path="/incidents/:id" element={<IncidentDetailPage />} />
 
           <Route path="/findings" element={<FindingListPage />} />
           <Route path="/findings/new" element={<NewFindingPage />} />

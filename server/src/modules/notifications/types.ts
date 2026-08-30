@@ -22,11 +22,14 @@ export type NotificationEventType =
   | 'risk_assessment_assigned'
   | 'risk_assessment_submitted_for_review'
   | 'risk_assessment_approved'
-  | 'risk_assessment_high_risk';
+  | 'risk_assessment_high_risk'
+  | 'incident_reported'
+  | 'incident_investigator_assigned'
+  | 'incident_status_changed';
 
 export type NotificationPriority = 'Normal' | 'High' | 'Critical';
 
-export type NotificationRelatedEntityType = 'hazard' | 'finding' | 'inspection' | 'risk_assessment' | 'corrective_action';
+export type NotificationRelatedEntityType = 'hazard' | 'finding' | 'inspection' | 'risk_assessment' | 'corrective_action' | 'incident';
 
 export interface NotificationEvent {
   id: string;

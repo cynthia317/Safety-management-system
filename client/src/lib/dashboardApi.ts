@@ -61,6 +61,9 @@ export interface DashboardSummary {
   thisMonthStart: string;
   thisMonthEnd: string;
   closureRate: number;
+  openIncidents: number;
+  highPotentialEvents: number;
+  nearMissesThisMonth: number;
   recentHazards: DashboardHazardSummary[];
   criticalFindings: DashboardFindingSummary[];
   overdueCorrectiveActions: DashboardCorrectiveActionSummary[];

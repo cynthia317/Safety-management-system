@@ -66,6 +66,12 @@ export interface DashboardSummary {
   thisMonthStart: string;
   thisMonthEnd: string;
   closureRate: number;
+  openIncidents: number;
+  /** Open Incident/NearMiss records with potentialSeverity in (High, Critical) — the exact
+   * condition the "High-Potential Events" card's deep link must also apply. */
+  highPotentialEvents: number;
+  /** eventType='NearMiss' within [thisMonthStart, thisMonthEnd) — same window as inspections. */
+  nearMissesThisMonth: number;
   recentHazards: DashboardHazardSummary[];
   criticalFindings: DashboardFindingSummary[];
   overdueCorrectiveActions: DashboardCorrectiveActionSummary[];

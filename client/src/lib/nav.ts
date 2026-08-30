@@ -9,6 +9,7 @@ import {
   Building2,
   FileBarChart2,
   Settings,
+  Siren,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -22,6 +23,7 @@ export const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { label: 'My Actions', path: '/my-actions', icon: ListTodo },
   { label: 'Hazard Reports', path: '/hazards', icon: AlertTriangle },
+  { label: 'Incidents', path: '/incidents', icon: Siren },
   { label: 'Inspections', path: '/inspections', icon: ClipboardCheck },
   { label: 'Findings', path: '/findings', icon: FileSearch },
   { label: 'Corrective Actions', path: '/corrective-actions', icon: Wrench },

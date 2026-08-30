@@ -15,7 +15,9 @@ export function CorrectiveActionSourceBadge({ action }: CorrectiveActionSourceBa
           ? { to: `/inspections/${action.inspectionId}`, ref: action.inspectionReferenceNumber }
           : action.riskAssessmentId && action.riskAssessmentReferenceNumber
             ? { to: `/risk-assessments/${action.riskAssessmentId}`, ref: action.riskAssessmentReferenceNumber }
-            : null;
+            : action.incidentId && action.incidentReferenceNumber
+              ? { to: `/incidents/${action.incidentId}`, ref: action.incidentReferenceNumber }
+              : null;
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded border border-border bg-canvas-raised px-2 py-0.5 text-xs text-muted">

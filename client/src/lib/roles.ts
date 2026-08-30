@@ -60,3 +60,15 @@ export function canWorkOnCorrectiveAction(_role: Role): boolean {
   // exact assignee, since actions are sometimes handed off within a team informally.
   return true;
 }
+
+export function canManageIncidents(role: Role): boolean {
+  return role !== 'Worker';
+}
+
+export function canAssignIncidentInvestigator(role: Role): boolean {
+  return role === 'Supervisor' || role === 'EHS Officer' || role === 'Admin';
+}
+
+export function canCloseIncident(role: Role): boolean {
+  return role === 'EHS Officer' || role === 'Admin';
+}

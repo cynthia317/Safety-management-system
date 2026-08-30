@@ -5,6 +5,7 @@ import type { TemplateStatus } from '../lib/inspectionTemplateTypes';
 import type { CorrectiveActionStatus } from '../lib/correctiveActionTypes';
 import type { WorkplaceStatus } from '../lib/workplaceTypes';
 import type { RiskAssessmentStatus } from '../lib/riskAssessmentTypes';
+import type { IncidentStatus } from '../lib/incidentTypes';
 
 type BadgeStatus =
   | WorkflowStatus
@@ -13,7 +14,8 @@ type BadgeStatus =
   | TemplateStatus
   | CorrectiveActionStatus
   | WorkplaceStatus
-  | RiskAssessmentStatus;
+  | RiskAssessmentStatus
+  | IncidentStatus;
 
 const STATUS_STYLES: Record<BadgeStatus, string> = {
   Open: 'bg-sky-500/10 text-sky-400 border-sky-500/30',
@@ -34,6 +36,8 @@ const STATUS_STYLES: Record<BadgeStatus, string> = {
   Assigned: 'bg-sky-500/10 text-sky-400 border-sky-500/30',
   Verified: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
   Approved: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  Reported: 'bg-sky-500/10 text-sky-400 border-sky-500/30',
+  'Under Investigation': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
 };
 
 interface StatusBadgeProps {

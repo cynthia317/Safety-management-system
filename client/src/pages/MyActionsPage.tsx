@@ -7,6 +7,7 @@ import {
   FileSearch,
   ListTodo,
   ShieldAlert,
+  Siren,
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ const MODULE_LABEL: Record<MyActionModule, string> = {
   inspection: 'Inspection',
   risk_assessment: 'Risk Assessment',
   corrective_action: 'Corrective Action',
+  incident: 'Incident',
 };
 
 const MODULE_ICON: Record<MyActionModule, LucideIcon> = {
@@ -39,6 +41,7 @@ const MODULE_ICON: Record<MyActionModule, LucideIcon> = {
   inspection: ClipboardCheck,
   risk_assessment: ShieldAlert,
   corrective_action: Wrench,
+  incident: Siren,
 };
 
 function matchesCategory(item: MyActionItem, category: CategoryId): boolean {

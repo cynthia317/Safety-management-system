@@ -29,6 +29,7 @@ export async function listCorrectiveActionsHandler(req: Request, res: Response):
   const hazardId = queryString(req.query.hazardId);
   const inspectionId = queryString(req.query.inspectionId);
   const riskAssessmentId = queryString(req.query.riskAssessmentId);
+  const incidentId = queryString(req.query.incidentId);
   const findingIdParam = req.query.findingId;
   const findingIds = Array.isArray(findingIdParam)
     ? findingIdParam.filter((v): v is string => typeof v === 'string')
@@ -48,6 +49,7 @@ export async function listCorrectiveActionsHandler(req: Request, res: Response):
     findingIds,
     inspectionId,
     riskAssessmentId,
+    incidentId,
     workplace: scopeWhere ?? (requestedWorkplace ? { equals: requestedWorkplace, mode: 'insensitive' } : undefined),
     status: queryString(req.query.status) as CorrectiveActionStatus | undefined,
     priority: queryString(req.query.priority) as RiskLevel | undefined,

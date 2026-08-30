@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   FileSearch,
   ShieldAlert,
+  Siren,
   Wrench,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
@@ -272,6 +273,30 @@ export function DashboardPage() {
           hint="Corrective actions closed to date"
           icon={CheckCircle2}
           tone="success"
+        />
+        <LinkedStatCard
+          to="/incidents?openOnly=true"
+          label="Open Incidents"
+          value={summary.openIncidents}
+          hint="Incidents and near misses still open"
+          icon={Siren}
+          tone="warning"
+        />
+        <LinkedStatCard
+          to="/incidents?openOnly=true&highPotential=true"
+          label="High-Potential Events"
+          value={summary.highPotentialEvents}
+          hint="Open, potential severity High or Critical"
+          icon={AlertTriangle}
+          tone="danger"
+        />
+        <LinkedStatCard
+          to={`/incidents?eventType=NearMiss&from=${encodeURIComponent(summary.thisMonthStart)}&to=${encodeURIComponent(summary.thisMonthEnd)}`}
+          label="Near Misses This Month"
+          value={summary.nearMissesThisMonth}
+          hint="Reported this calendar month"
+          icon={ShieldAlert}
+          tone="default"
         />
       </div>
 

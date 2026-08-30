@@ -65,6 +65,25 @@ export function canApproveRiskAssessment(role: Role): boolean {
   return role === 'EHS Officer' || role === 'Admin';
 }
 
+// Incidents/near-misses: reporting is frontline work open to everyone, same principle as
+// hazard reporting. Editing the report, assigning an investigator, and conducting the
+// investigation are supervisory acts, mirroring canTriageHazard/canManageInspections.
+export function canManageIncidents(role: Role): boolean {
+  return role !== 'Worker';
+}
+
+// Assigning ownership of an investigation is the same tier as assigning a corrective
+// action — a supervisory act, not open to Workers.
+export function canAssignIncidentInvestigator(role: Role): boolean {
+  return role === 'Supervisor' || role === 'EHS Officer' || role === 'Admin';
+}
+
+// Closing (and reopening) an incident is a sign-off, gated the same as closing a
+// corrective action or approving a risk assessment.
+export function canCloseIncident(role: Role): boolean {
+  return role === 'EHS Officer' || role === 'Admin';
+}
+
 // Workplaces/sites are organisation-wide structural configuration — who exists at all,
 // not a workflow record — so only Admin may create or restructure them. Everyone can
 // still read the list/detail (needed to pick a site on every other form).

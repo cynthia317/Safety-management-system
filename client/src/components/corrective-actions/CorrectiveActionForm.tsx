@@ -36,7 +36,7 @@ export interface ValidatedCorrectiveActionFormData {
 }
 
 export interface CorrectiveActionSourceContext {
-  kind: 'hazard' | 'finding' | 'inspection' | 'riskAssessment';
+  kind: 'hazard' | 'finding' | 'inspection' | 'riskAssessment' | 'incident';
   id: string;
   referenceNumber: string;
   title: string;
@@ -47,6 +47,7 @@ const SOURCE_CONTEXT_PATHS: Record<CorrectiveActionSourceContext['kind'], string
   finding: 'findings',
   inspection: 'inspections',
   riskAssessment: 'risk-assessments',
+  incident: 'incidents',
 };
 
 interface CorrectiveActionFormProps {

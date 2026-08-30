@@ -12,6 +12,7 @@ import { addFindingComment, getFinding } from '../lib/findingsApi';
 import { addHazardComment, getHazard } from '../lib/hazardsApi';
 import { getInspection } from '../lib/inspectionsApi';
 import { getRiskAssessment } from '../lib/riskAssessmentsApi';
+import { getIncident } from '../lib/incidentsApi';
 import { useToast } from '../lib/ToastContext';
 import type { CorrectiveActionFormValues, CorrectiveActionSourceType } from '../lib/correctiveActionTypes';
 
@@ -23,11 +24,12 @@ export function NewCorrectiveActionPage() {
   const hazardId = searchParams.get('hazardId');
   const inspectionId = searchParams.get('inspectionId');
   const riskAssessmentId = searchParams.get('riskAssessmentId');
+  const incidentId = searchParams.get('incidentId');
   const questionId = searchParams.get('questionId');
 
   const [sourceContext, setSourceContext] = useState<CorrectiveActionSourceContext | null>(null);
   const [initialValues, setInitialValues] = useState<Partial<CorrectiveActionFormValues> | undefined>(undefined);
-  const [loadingSource, setLoadingSource] = useState(Boolean(findingId || hazardId || inspectionId || riskAssessmentId));
+  const [loadingSource, setLoadingSource] = useState(Boolean(findingId || hazardId || inspectionId || riskAssessmentId || incidentId));
 
   useEffect(() => {
     if (findingId) {
@@ -148,8 +150,34 @@ export function NewCorrectiveActionPage() {
       };
     }
 
+    if (incidentId) {
+      let cancelled = false;
+      getIncident(incidentId)
+        .then((incident) => {
+          if (cancelled) return;
+          setSourceContext({ kind: 'incident', id: incident.id, referenceNumber: incident.referenceNumber, title: incident.title });
+          setInitialValues({
+            title: `Corrective action from ${incident.referenceNumber}`,
+            workplace: incident.workplace,
+            department: incident.department,
+            location: incident.location,
+            priority: incident.potentialSeverity,
+            sourceType: 'Incident' as CorrectiveActionSourceType,
+          });
+        })
+        .catch(() => {
+          if (!cancelled) setSourceContext(null);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingSource(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     return undefined;
-  }, [findingId, hazardId, inspectionId, riskAssessmentId, questionId]);
+  }, [findingId, hazardId, inspectionId, riskAssessmentId, incidentId, questionId]);
 
   async function handleSubmit(data: ValidatedCorrectiveActionFormData) {
     const created = await createCorrectiveAction({
@@ -171,6 +199,8 @@ export function NewCorrectiveActionPage() {
       inspectionReferenceNumber: sourceContext?.kind === 'inspection' ? sourceContext.referenceNumber : null,
       riskAssessmentId: sourceContext?.kind === 'riskAssessment' ? sourceContext.id : null,
       riskAssessmentReferenceNumber: sourceContext?.kind === 'riskAssessment' ? sourceContext.referenceNumber : null,
+      incidentId: sourceContext?.kind === 'incident' ? sourceContext.id : null,
+      incidentReferenceNumber: sourceContext?.kind === 'incident' ? sourceContext.referenceNumber : null,
       externalSourceReference: data.externalSourceReference || null,
     });
 
@@ -205,7 +235,13 @@ export function NewCorrectiveActionPage() {
   }
 
   const sourceLabel = sourceContext
-    ? { hazard: 'hazard report', finding: 'finding', inspection: 'inspection', riskAssessment: 'risk assessment' }[sourceContext.kind]
+    ? {
+        hazard: 'hazard report',
+        finding: 'finding',
+        inspection: 'inspection',
+        riskAssessment: 'risk assessment',
+        incident: 'incident',
+      }[sourceContext.kind]
     : null;
 
   return (

@@ -27,10 +27,14 @@ function sanitizeEvidence(input: unknown): { evidence: ReturnType<typeof validat
   return { evidence: items, error: rejections.map((r) => (r.fileName ? `${r.fileName}: ${r.reason}` : r.reason)).join(' ') };
 }
 
+// 'Near Miss' is deliberately excluded here (Phase 6 decision) — near-miss reporting now
+// belongs to the Incident module (Incident.eventType = 'NearMiss'). This list gates what a
+// NEW or UPDATED hazard report may declare; it is intentionally narrower than the full
+// `ReportType` union, which still includes 'Near Miss' so historical hazard records
+// created before this change continue to read/display correctly (see hazards/types.ts).
 export const REPORT_TYPES: ReportType[] = [
   'Unsafe Condition',
   'Unsafe Act',
-  'Near Miss',
   'Equipment Defect',
   'Environmental Concern',
   'Positive Safety Observation',

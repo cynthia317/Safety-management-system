@@ -104,7 +104,8 @@ export function validateCreateCorrectiveAction(body: unknown): ValidationResult<
   const hazardId = isNonEmptyString(b.hazardId) ? b.hazardId.trim() : null;
   const inspectionId = isNonEmptyString(b.inspectionId) ? b.inspectionId.trim() : null;
   const riskAssessmentId = isNonEmptyString(b.riskAssessmentId) ? b.riskAssessmentId.trim() : null;
-  const sourceLinkCount = [findingId, hazardId, inspectionId, riskAssessmentId].filter((v) => v !== null).length;
+  const incidentId = isNonEmptyString(b.incidentId) ? b.incidentId.trim() : null;
+  const sourceLinkCount = [findingId, hazardId, inspectionId, riskAssessmentId, incidentId].filter((v) => v !== null).length;
   if (sourceLinkCount > 1) {
     errors.sourceType = 'A corrective action can only be linked to one source record.';
   }
@@ -138,6 +139,8 @@ export function validateCreateCorrectiveAction(body: unknown): ValidationResult<
       riskAssessmentReferenceNumber: isNonEmptyString(b.riskAssessmentReferenceNumber)
         ? b.riskAssessmentReferenceNumber.trim()
         : null,
+      incidentId,
+      incidentReferenceNumber: isNonEmptyString(b.incidentReferenceNumber) ? b.incidentReferenceNumber.trim() : null,
       externalSourceReference: isNonEmptyString(b.externalSourceReference) ? b.externalSourceReference.trim() : null,
       createdBy: (b.createdBy as string).trim(),
       assignedTo: (b.assignedTo as string).trim(),

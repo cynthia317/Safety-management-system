@@ -16,6 +16,7 @@ import { notificationsRouter } from './modules/notifications/routes';
 import { schedulerRouter } from './modules/notifications/schedulerRoutes';
 import { dashboardRouter } from './modules/dashboard/routes';
 import { myActionsRouter } from './modules/myActions/routes';
+import { incidentsRouter } from './modules/incidents/routes';
 import { authRouter, usersRouter } from './modules/auth/routes';
 import { requireAuth } from './modules/auth/middleware';
 import { verifyOrigin } from './middleware/csrf';
@@ -93,6 +94,7 @@ export function createApp(): Express {
   app.use('/api/corrective-actions', requireAuth, correctiveActionsRouter);
   app.use('/api/workplaces', requireAuth, workplacesRouter);
   app.use('/api/risk-assessments', requireAuth, riskAssessmentsRouter);
+  app.use('/api/incidents', requireAuth, incidentsRouter);
   app.use('/api/notifications', requireAuth, notificationsRouter);
   app.use('/api/dashboard', requireAuth, dashboardRouter);
   app.use('/api/my-actions', requireAuth, myActionsRouter);

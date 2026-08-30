@@ -1,6 +1,6 @@
 import { apiRequest } from './api';
 
-export type MyActionModule = 'hazard' | 'finding' | 'inspection' | 'risk_assessment' | 'corrective_action';
+export type MyActionModule = 'hazard' | 'finding' | 'inspection' | 'risk_assessment' | 'corrective_action' | 'incident';
 export type MyActionPriority = 'Low' | 'Medium' | 'High' | 'Critical';
 
 export interface MyActionItem {

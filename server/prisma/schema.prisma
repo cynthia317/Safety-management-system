@@ -129,6 +129,7 @@ model HazardReport {
   findings          Finding[]
   correctiveActions CorrectiveAction[]
   riskAssessments   RiskAssessment[]
+  incidents         Incident[]
 }
 
 model HazardActivityEntry {
@@ -394,6 +395,9 @@ model CorrectiveAction {
   riskAssessmentId              String?
   riskAssessmentReferenceNumber String?
   riskAssessment                RiskAssessment? @relation(fields: [riskAssessmentId], references: [id], onDelete: SetNull)
+  incidentId                    String?
+  incidentReferenceNumber       String?
+  incident                      Incident?       @relation(fields: [incidentId], references: [id], onDelete: SetNull)
   externalSourceReference       String?
   createdBy                     String
   assignedTo                    String
@@ -415,6 +419,92 @@ model CorrectiveAction {
   @@index([findingId])
   @@index([inspectionId])
   @@index([riskAssessmentId])
+  @@index([incidentId])
+}
+
+// ---------------------------------------------------------------------------
+// Incidents / Near Misses (Phase 6)
+// ---------------------------------------------------------------------------
+
+model Incident {
+  id                    String    @id @default(uuid())
+  referenceNumber       String    @unique
+  eventType             String
+  category              String
+  title                 String
+  description           String
+  workplace             String
+  department            String
+  location              String
+  eventDate             DateTime
+  reportedBy            String
+  reportedAt            DateTime
+  peopleInvolved        String
+  injuryOccurred        Boolean
+  injurySeverity        String?
+  immediateActionTaken  String
+  actualSeverity        String
+  potentialSeverity     String
+  status                String
+  leadInvestigator      String
+  investigationSummary  String
+  rootCause             String
+  contributingFactors   String
+  lessonsLearned        String
+  hazardId              String?
+  hazardReferenceNumber String?
+  hazard                HazardReport? @relation(fields: [hazardId], references: [id], onDelete: SetNull)
+  updatedAt             DateTime  @updatedAt
+
+  activity          IncidentActivityEntry[]
+  comments          IncidentComment[]
+  evidence          IncidentEvidenceItem[]
+  correctiveActions CorrectiveAction[]
+
+  @@index([workplace])
+  @@index([status])
+  @@index([eventType])
+  @@index([eventDate])
+  @@index([leadInvestigator])
+  @@index([potentialSeverity])
+  @@index([hazardId])
+}
+
+model IncidentActivityEntry {
+  id         String   @id @default(uuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  type       String
+  message    String
+  actor      String
+  createdAt  DateTime
+
+  @@index([incidentId])
+}
+
+model IncidentComment {
+  id         String   @id @default(uuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  author     String
+  message    String
+  createdAt  DateTime
+
+  @@index([incidentId])
+}
+
+model IncidentEvidenceItem {
+  id         String   @id @default(uuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  fileName   String
+  fileSize   Int
+  mimeType   String
+  dataUrl    String   @db.Text
+  uploadedBy String
+  uploadedAt DateTime
+
+  @@index([incidentId])
 }
 
 model CorrectiveActionActivityEntry {
