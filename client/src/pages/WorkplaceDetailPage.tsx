@@ -8,17 +8,18 @@ import { Button } from '../components/Button';
 import { StatusBadge } from '../components/StatusBadge';
 import { LoadingState } from '../components/LoadingState';
 import { WorkplaceHierarchyView } from '../components/workplaces/WorkplaceHierarchyView';
+import { ActivityTimeline } from '../components/ActivityTimeline';
 import { getWorkplace, updateWorkplace } from '../lib/workplacesApi';
 import { ApiError } from '../lib/api';
 import { useToast } from '../lib/ToastContext';
 import { formatDate } from '../lib/format';
-import type { Workplace } from '../lib/workplaceTypes';
+import type { WorkplaceDetail } from '../lib/workplaceTypes';
 
 export function WorkplaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
 
-  const [workplace, setWorkplace] = useState<Workplace | null>(null);
+  const [workplace, setWorkplace] = useState<WorkplaceDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,6 +158,10 @@ export function WorkplaceDetailPage() {
             <dd className="mt-0.5 text-sm text-body">{workplace.address || 'Not specified'}</dd>
           </div>
         </dl>
+      </SectionCard>
+
+      <SectionCard title="Activity" description="History of changes to this workplace" className="mt-4">
+        <ActivityTimeline items={workplace.activity} />
       </SectionCard>
 
       <div className="mt-4">

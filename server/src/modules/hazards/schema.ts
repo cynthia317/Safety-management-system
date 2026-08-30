@@ -1,7 +1,7 @@
+import { validateEvidence } from '../../lib/evidence';
 import type {
   CreateCommentInput,
   CreateHazardInput,
-  EvidenceInput,
   HazardCategory,
   HazardStatus,
   ReportType,
@@ -17,47 +17,14 @@ const MAX_EVIDENCE_BYTES = 8 * 1024 * 1024;
 // under a spoofed extension.
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'];
 
-// The client-reported `fileSize` was previously trusted as-is — a caller could declare
-// any size while sending a much larger `dataUrl`. This decodes the actual base64 payload
-// length instead, so the real size is what gets checked against the limit.
-function decodedByteLength(dataUrl: string): number {
-  const commaIndex = dataUrl.indexOf(',');
-  const base64Part = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : '';
-  if (base64Part.length === 0) return 0;
-  const padding = base64Part.endsWith('==') ? 2 : base64Part.endsWith('=') ? 1 : 0;
-  return Math.floor((base64Part.length * 3) / 4) - padding;
-}
-
-function sanitizeEvidence(input: unknown): EvidenceInput[] {
-  if (!Array.isArray(input)) return [];
-
-  const items: EvidenceInput[] = [];
-  for (const raw of input) {
-    if (items.length >= MAX_EVIDENCE_ITEMS) break;
-    if (typeof raw !== 'object' || raw === null) continue;
-
-    const item = raw as Record<string, unknown>;
-    if (
-      isNonEmptyString(item.fileName) &&
-      isNonEmptyString(item.mimeType) &&
-      ALLOWED_MIME_TYPES.includes(item.mimeType.trim().toLowerCase()) &&
-      isNonEmptyString(item.dataUrl) &&
-      item.dataUrl.startsWith('data:') &&
-      typeof item.fileSize === 'number' &&
-      item.fileSize > 0 &&
-      item.fileSize <= MAX_EVIDENCE_BYTES &&
-      decodedByteLength(item.dataUrl) <= MAX_EVIDENCE_BYTES
-    ) {
-      items.push({
-        fileName: item.fileName.trim(),
-        fileSize: item.fileSize,
-        mimeType: item.mimeType.trim(),
-        dataUrl: item.dataUrl,
-      });
-    }
-  }
-
-  return items;
+function sanitizeEvidence(input: unknown): { evidence: ReturnType<typeof validateEvidence>['items']; error?: string } {
+  const { items, rejections } = validateEvidence(input, {
+    maxItems: MAX_EVIDENCE_ITEMS,
+    maxBytes: MAX_EVIDENCE_BYTES,
+    allowedMimeTypes: ALLOWED_MIME_TYPES,
+  });
+  if (rejections.length === 0) return { evidence: items };
+  return { evidence: items, error: rejections.map((r) => (r.fileName ? `${r.fileName}: ${r.reason}` : r.reason)).join(' ') };
 }
 
 export const REPORT_TYPES: ReportType[] = [
@@ -155,6 +122,11 @@ export function validateCreateHazard(body: unknown): ValidationResult<CreateHaza
     errors.reportedBy = 'Reporter name is required.';
   }
 
+  const { evidence, error: evidenceError } = sanitizeEvidence(b.evidence);
+  if (evidenceError) {
+    errors.evidence = evidenceError;
+  }
+
   if (Object.keys(errors).length > 0) {
     return { errors, value: undefined as unknown as CreateHazardInput };
   }
@@ -176,7 +148,7 @@ export function validateCreateHazard(body: unknown): ValidationResult<CreateHaza
       riskLevel: b.riskLevel as RiskLevel,
       reportedBy: (b.reportedBy as string).trim(),
       assignedTo: isNonEmptyString(b.assignedTo) ? b.assignedTo.trim() : '',
-      evidence: sanitizeEvidence(b.evidence),
+      evidence,
     },
   };
 }

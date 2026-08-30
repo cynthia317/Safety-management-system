@@ -62,6 +62,19 @@ model Workplace {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   areas        Area[]
+  activity     WorkplaceActivityEntry[]
+}
+
+model WorkplaceActivityEntry {
+  id          String    @id @default(uuid())
+  workplaceId String
+  workplace   Workplace @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
+  type        String
+  message     String
+  actor       String
+  createdAt   DateTime
+
+  @@index([workplaceId])
 }
 
 model Area {
@@ -235,6 +248,19 @@ model InspectionTemplate {
   updatedAt            DateTime @updatedAt
 
   sections TemplateSection[]
+  activity InspectionTemplateActivityEntry[]
+}
+
+model InspectionTemplateActivityEntry {
+  id                   String             @id @default(uuid())
+  inspectionTemplateId String
+  inspectionTemplate   InspectionTemplate @relation(fields: [inspectionTemplateId], references: [id], onDelete: Cascade)
+  type                 String
+  message              String
+  actor                String
+  createdAt            DateTime
+
+  @@index([inspectionTemplateId])
 }
 
 model TemplateSection {

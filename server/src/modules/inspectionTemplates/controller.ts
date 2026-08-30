@@ -41,7 +41,7 @@ export async function createTemplateHandler(req: Request, res: Response): Promis
     return;
   }
 
-  const template = await templateService.createTemplate(value);
+  const template = await templateService.createTemplate(value, req.user!.name);
   res.status(201).json({ data: template });
 }
 
@@ -70,7 +70,7 @@ export async function updateTemplateHandler(req: Request, res: Response): Promis
     return;
   }
 
-  const updated = await templateService.updateTemplate(id, value);
+  const updated = await templateService.updateTemplate(id, value, req.user!.name);
   res.json({ data: updated });
 }
 
@@ -81,7 +81,7 @@ export async function duplicateTemplateHandler(req: Request, res: Response): Pro
   }
 
   const id = req.params.id as string;
-  const duplicate = await templateService.duplicateTemplate(id);
+  const duplicate = await templateService.duplicateTemplate(id, req.user!.name);
 
   if (!duplicate) {
     res.status(404).json({

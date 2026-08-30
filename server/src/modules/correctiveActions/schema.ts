@@ -1,3 +1,4 @@
+import { validateEvidence } from '../../lib/evidence';
 import type {
   CorrectiveActionSourceType,
   CorrectiveActionStatus,
@@ -43,17 +44,6 @@ const ALLOWED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
-// The client-reported `fileSize` was previously trusted as-is — a caller could declare
-// any size while sending a much larger `dataUrl`. This decodes the actual base64 payload
-// length instead, so the real size is what gets checked against the limit.
-function decodedByteLength(dataUrl: string): number {
-  const commaIndex = dataUrl.indexOf(',');
-  const base64Part = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : '';
-  if (base64Part.length === 0) return 0;
-  const padding = base64Part.endsWith('==') ? 2 : base64Part.endsWith('=') ? 1 : 0;
-  return Math.floor((base64Part.length * 3) / 4) - padding;
-}
-
 export type ValidationErrors = Record<string, string>;
 
 export interface ValidationResult<T> {
@@ -73,36 +63,14 @@ function asRecord(body: unknown): Record<string, unknown> {
   return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
 }
 
-function sanitizeEvidence(input: unknown): EvidenceInput[] {
-  if (!Array.isArray(input)) return [];
-
-  const items: EvidenceInput[] = [];
-  for (const raw of input) {
-    if (items.length >= MAX_EVIDENCE_ITEMS) break;
-    if (typeof raw !== 'object' || raw === null) continue;
-
-    const item = raw as Record<string, unknown>;
-    if (
-      isNonEmptyString(item.fileName) &&
-      isNonEmptyString(item.mimeType) &&
-      ALLOWED_MIME_TYPES.includes(item.mimeType.trim().toLowerCase()) &&
-      isNonEmptyString(item.dataUrl) &&
-      item.dataUrl.startsWith('data:') &&
-      typeof item.fileSize === 'number' &&
-      item.fileSize > 0 &&
-      item.fileSize <= MAX_EVIDENCE_BYTES &&
-      decodedByteLength(item.dataUrl) <= MAX_EVIDENCE_BYTES
-    ) {
-      items.push({
-        fileName: item.fileName.trim(),
-        fileSize: item.fileSize,
-        mimeType: item.mimeType.trim(),
-        dataUrl: item.dataUrl,
-      });
-    }
-  }
-
-  return items;
+function sanitizeEvidence(input: unknown): { evidence: EvidenceInput[]; error?: string } {
+  const { items, rejections } = validateEvidence(input, {
+    maxItems: MAX_EVIDENCE_ITEMS,
+    maxBytes: MAX_EVIDENCE_BYTES,
+    allowedMimeTypes: ALLOWED_MIME_TYPES,
+  });
+  if (rejections.length === 0) return { evidence: items };
+  return { evidence: items, error: rejections.map((r) => (r.fileName ? `${r.fileName}: ${r.reason}` : r.reason)).join(' ') };
 }
 
 export function validateCreateCorrectiveAction(body: unknown): ValidationResult<CreateCorrectiveActionInput> {
@@ -141,6 +109,11 @@ export function validateCreateCorrectiveAction(body: unknown): ValidationResult<
     errors.sourceType = 'A corrective action can only be linked to one source record.';
   }
 
+  const { evidence, error: evidenceError } = sanitizeEvidence(b.evidence);
+  if (evidenceError) {
+    errors.evidence = evidenceError;
+  }
+
   if (Object.keys(errors).length > 0) {
     return { errors, value: undefined as unknown as CreateCorrectiveActionInput };
   }
@@ -169,7 +142,7 @@ export function validateCreateCorrectiveAction(body: unknown): ValidationResult<
       createdBy: (b.createdBy as string).trim(),
       assignedTo: (b.assignedTo as string).trim(),
       dueDate: new Date(b.dueDate as string).toISOString(),
-      evidence: sanitizeEvidence(b.evidence),
+      evidence,
     },
   };
 }
@@ -270,8 +243,12 @@ export function validateAddEvidence(body: unknown): ValidationResult<ValidatedEv
 
   if (!isNonEmptyString(b.uploadedBy)) errors.uploadedBy = 'Uploader name is required.';
 
-  const files = sanitizeEvidence(b.files);
-  if (files.length === 0) errors.files = 'Attach at least one valid file.';
+  const { evidence: files, error: evidenceError } = sanitizeEvidence(b.files);
+  if (evidenceError) {
+    errors.files = evidenceError;
+  } else if (files.length === 0) {
+    errors.files = 'Attach at least one valid file.';
+  }
 
   if (Object.keys(errors).length > 0) {
     return { errors, value: undefined as unknown as ValidatedEvidenceUpload };

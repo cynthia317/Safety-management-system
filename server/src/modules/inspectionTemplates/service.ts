@@ -3,10 +3,14 @@ import type {
   InspectionTemplate as PrismaInspectionTemplate,
   TemplateSection as PrismaTemplateSection,
   TemplateQuestion as PrismaTemplateQuestion,
+  InspectionTemplateActivityEntry as PrismaInspectionTemplateActivityEntry,
 } from '@prisma/client';
 import type {
   CreateTemplateInput,
   InspectionTemplate,
+  InspectionTemplateActivityEntry,
+  InspectionTemplateActivityType,
+  InspectionTemplateDetail,
   QuestionInput,
   QuestionResponseType,
   SectionInput,
@@ -61,6 +65,17 @@ function fromRow(row: TemplateRow): InspectionTemplate {
   };
 }
 
+function activityFromRow(row: PrismaInspectionTemplateActivityEntry): InspectionTemplateActivityEntry {
+  return {
+    id: row.id,
+    inspectionTemplateId: row.inspectionTemplateId,
+    type: row.type as InspectionTemplateActivityType,
+    message: row.message,
+    actor: row.actor,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 export async function listTemplates(): Promise<InspectionTemplate[]> {
   const rows = await prisma.inspectionTemplate.findMany({
     orderBy: { name: 'asc' },
@@ -69,9 +84,13 @@ export async function listTemplates(): Promise<InspectionTemplate[]> {
   return rows.map(fromRow);
 }
 
-export async function getTemplate(id: string): Promise<InspectionTemplate | undefined> {
-  const row = await prisma.inspectionTemplate.findUnique({ where: { id }, include: { sections: WITH_SECTIONS } });
-  return row ? fromRow(row) : undefined;
+export async function getTemplate(id: string): Promise<InspectionTemplateDetail | undefined> {
+  const row = await prisma.inspectionTemplate.findUnique({
+    where: { id },
+    include: { sections: WITH_SECTIONS, activity: { orderBy: { createdAt: 'asc' } } },
+  });
+  if (!row) return undefined;
+  return { ...fromRow(row), activity: row.activity.map(activityFromRow) };
 }
 
 function sectionCreateData(inputs: SectionInput[]) {
@@ -95,7 +114,8 @@ function sectionCreateData(inputs: SectionInput[]) {
   }));
 }
 
-export async function createTemplate(input: CreateTemplateInput): Promise<InspectionTemplate> {
+export async function createTemplate(input: CreateTemplateInput, actor: string): Promise<InspectionTemplateDetail> {
+  const now = new Date();
   const row = await prisma.inspectionTemplate.create({
     data: {
       name: input.name,
@@ -106,10 +126,11 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Inspec
       version: 1,
       status: 'Draft',
       sections: { create: sectionCreateData(input.sections) },
+      activity: { create: { type: 'created', message: 'Inspection template created.', actor, createdAt: now } },
     },
-    include: { sections: WITH_SECTIONS },
+    include: { sections: WITH_SECTIONS, activity: { orderBy: { createdAt: 'asc' } } },
   });
-  return fromRow(row);
+  return { ...fromRow(row), activity: row.activity.map(activityFromRow) };
 }
 
 /** Replaces the whole section/question tree — the builder UI freely adds, removes, and
@@ -141,15 +162,22 @@ async function replaceSections(templateId: string, sections: SectionInput[]): Pr
   }
 }
 
-export async function updateTemplate(id: string, input: UpdateTemplateInput): Promise<InspectionTemplate | undefined> {
+export async function updateTemplate(
+  id: string,
+  input: UpdateTemplateInput,
+  actor: string,
+): Promise<InspectionTemplateDetail | undefined> {
   const existing = await prisma.inspectionTemplate.findUnique({ where: { id } });
   if (!existing) return undefined;
+
+  const now = new Date();
+  const nextStatus = input.status;
 
   if (input.sections) {
     await replaceSections(id, input.sections);
   }
 
-  const row = await prisma.inspectionTemplate.update({
+  await prisma.inspectionTemplate.update({
     where: { id },
     data: {
       name: input.name ?? existing.name,
@@ -157,18 +185,46 @@ export async function updateTemplate(id: string, input: UpdateTemplateInput): Pr
       description: input.description ?? existing.description,
       category: input.category ?? existing.category,
       applicableIndustries: input.applicableIndustries ?? existing.applicableIndustries,
-      status: input.status ?? existing.status,
+      status: nextStatus ?? existing.status,
       version: { increment: 1 },
     },
-    include: { sections: WITH_SECTIONS },
   });
-  return fromRow(row);
+
+  if (nextStatus && nextStatus !== existing.status) {
+    await prisma.inspectionTemplateActivityEntry.create({
+      data: {
+        inspectionTemplateId: id,
+        type: 'status_change',
+        message: `Status changed from ${existing.status} to ${nextStatus}.`,
+        actor,
+        createdAt: now,
+      },
+    });
+  }
+
+  const changedFieldNames = (['name', 'code', 'description', 'category', 'applicableIndustries', 'sections'] as const).filter(
+    (key) => input[key] !== undefined,
+  );
+  if (changedFieldNames.length > 0) {
+    await prisma.inspectionTemplateActivityEntry.create({
+      data: {
+        inspectionTemplateId: id,
+        type: 'updated',
+        message: `Template updated to v${existing.version + 1} (${changedFieldNames.join(', ')}).`,
+        actor,
+        createdAt: now,
+      },
+    });
+  }
+
+  return getTemplate(id);
 }
 
-export async function duplicateTemplate(id: string): Promise<InspectionTemplate | undefined> {
+export async function duplicateTemplate(id: string, actor: string): Promise<InspectionTemplateDetail | undefined> {
   const existing = await getTemplate(id);
   if (!existing) return undefined;
 
+  const now = new Date();
   const row = await prisma.inspectionTemplate.create({
     data: {
       name: `${existing.name} (Copy)`,
@@ -179,8 +235,16 @@ export async function duplicateTemplate(id: string): Promise<InspectionTemplate 
       status: 'Draft',
       version: 1,
       sections: { create: sectionCreateData(existing.sections) },
+      activity: {
+        create: {
+          type: 'created',
+          message: `Duplicated from "${existing.name}" (v${existing.version}).`,
+          actor,
+          createdAt: now,
+        },
+      },
     },
-    include: { sections: WITH_SECTIONS },
+    include: { sections: WITH_SECTIONS, activity: { orderBy: { createdAt: 'asc' } } },
   });
-  return fromRow(row);
+  return { ...fromRow(row), activity: row.activity.map(activityFromRow) };
 }

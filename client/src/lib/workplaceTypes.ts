@@ -28,6 +28,21 @@ export interface Workplace {
   updatedAt: string;
 }
 
+export type WorkplaceActivityType = 'created' | 'status_change' | 'updated';
+
+export interface WorkplaceActivityEntry {
+  id: string;
+  workplaceId: string;
+  type: WorkplaceActivityType;
+  message: string;
+  actor: string;
+  createdAt: string;
+}
+
+export interface WorkplaceDetail extends Workplace {
+  activity: WorkplaceActivityEntry[];
+}
+
 export interface LocationInput {
   id?: string;
   name: string;

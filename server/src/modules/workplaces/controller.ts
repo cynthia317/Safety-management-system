@@ -41,7 +41,7 @@ export async function createWorkplaceHandler(req: Request, res: Response): Promi
     return;
   }
 
-  const workplace = await workplaceService.createWorkplace(value);
+  const workplace = await workplaceService.createWorkplace(value, req.user!.name);
   res.status(201).json({ data: workplace });
 }
 
@@ -70,6 +70,6 @@ export async function updateWorkplaceHandler(req: Request, res: Response): Promi
     return;
   }
 
-  const updated = await workplaceService.updateWorkplace(id, value);
+  const updated = await workplaceService.updateWorkplace(id, value, req.user!.name);
   res.json({ data: updated });
 }

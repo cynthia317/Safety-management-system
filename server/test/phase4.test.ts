@@ -66,7 +66,7 @@ describe('Phase 4 — dashboard, pagination, my actions', () => {
       createdBy: creator.name,
       // Verifying requires at least one evidence file (see correctiveActions/controller.ts)
       // — attached unconditionally so `overrides.status: 'Verified'` below always succeeds.
-      evidence: [{ fileName: 'evidence.png', fileSize: 5, mimeType: 'image/png', dataUrl: 'data:image/png;base64,aGVsbG8=' }],
+      evidence: [{ fileName: 'evidence.png', fileSize: 8, mimeType: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }],
     });
     expect(res.status).toBe(201);
     const action = res.body.data;

@@ -73,6 +73,21 @@ export interface InspectionTemplate {
   updatedAt: string;
 }
 
+export type InspectionTemplateActivityType = 'created' | 'status_change' | 'updated';
+
+export interface InspectionTemplateActivityEntry {
+  id: string;
+  inspectionTemplateId: string;
+  type: InspectionTemplateActivityType;
+  message: string;
+  actor: string;
+  createdAt: string;
+}
+
+export interface InspectionTemplateDetail extends InspectionTemplate {
+  activity: InspectionTemplateActivityEntry[];
+}
+
 export interface QuestionInput {
   id?: string;
   text: string;

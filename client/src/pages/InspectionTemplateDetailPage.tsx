@@ -8,18 +8,19 @@ import { Button } from '../components/Button';
 import { StatusBadge } from '../components/StatusBadge';
 import { LoadingState } from '../components/LoadingState';
 import { TemplateQuestionPreview } from '../components/inspection-templates/TemplateQuestionPreview';
+import { ActivityTimeline } from '../components/ActivityTimeline';
 import { getTemplate, updateTemplate, duplicateTemplate } from '../lib/inspectionTemplatesApi';
 import { ApiError } from '../lib/api';
 import { useToast } from '../lib/ToastContext';
 import { formatDate } from '../lib/format';
-import type { InspectionTemplate } from '../lib/inspectionTemplateTypes';
+import type { InspectionTemplateDetail } from '../lib/inspectionTemplateTypes';
 
 export function InspectionTemplateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
 
-  const [template, setTemplate] = useState<InspectionTemplate | null>(null);
+  const [template, setTemplate] = useState<InspectionTemplateDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,6 +174,10 @@ export function InspectionTemplateDetailPage() {
             ))}
           </div>
         )}
+      </SectionCard>
+
+      <SectionCard title="Activity" description="History of changes to this template" className="mt-4">
+        <ActivityTimeline items={template.activity} />
       </SectionCard>
 
       <div className="mt-4 space-y-3">

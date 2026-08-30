@@ -1,5 +1,10 @@
 import { prisma } from '../../lib/prisma';
-import type { Area as PrismaArea, Location as PrismaLocation, Workplace as PrismaWorkplace } from '@prisma/client';
+import type {
+  Area as PrismaArea,
+  Location as PrismaLocation,
+  Workplace as PrismaWorkplace,
+  WorkplaceActivityEntry as PrismaWorkplaceActivityEntry,
+} from '@prisma/client';
 import type {
   Area,
   AreaInput,
@@ -7,6 +12,9 @@ import type {
   Location,
   UpdateWorkplaceInput,
   Workplace,
+  WorkplaceActivityEntry,
+  WorkplaceActivityType,
+  WorkplaceDetail,
   WorkplaceStatus,
 } from './types';
 
@@ -37,6 +45,17 @@ function fromRow(row: WorkplaceRow): Workplace {
   };
 }
 
+function activityFromRow(row: PrismaWorkplaceActivityEntry): WorkplaceActivityEntry {
+  return {
+    id: row.id,
+    workplaceId: row.workplaceId,
+    type: row.type as WorkplaceActivityType,
+    message: row.message,
+    actor: row.actor,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 export async function listWorkplaces(): Promise<Workplace[]> {
   const rows = await prisma.workplace.findMany({
     orderBy: { name: 'asc' },
@@ -45,12 +64,16 @@ export async function listWorkplaces(): Promise<Workplace[]> {
   return rows.map(fromRow);
 }
 
-export async function getWorkplace(id: string): Promise<Workplace | undefined> {
+export async function getWorkplace(id: string): Promise<WorkplaceDetail | undefined> {
   const row = await prisma.workplace.findUnique({
     where: { id },
-    include: { areas: { orderBy: { order: 'asc' }, include: { locations: { orderBy: { order: 'asc' } } } } },
+    include: {
+      areas: { orderBy: { order: 'asc' }, include: { locations: { orderBy: { order: 'asc' } } } },
+      activity: { orderBy: { createdAt: 'asc' } },
+    },
   });
-  return row ? fromRow(row) : undefined;
+  if (!row) return undefined;
+  return { ...fromRow(row), activity: row.activity.map(activityFromRow) };
 }
 
 function areaCreateData(inputs: AreaInput[]) {
@@ -68,7 +91,8 @@ function areaCreateData(inputs: AreaInput[]) {
   }));
 }
 
-export async function createWorkplace(input: CreateWorkplaceInput): Promise<Workplace> {
+export async function createWorkplace(input: CreateWorkplaceInput, actor: string): Promise<WorkplaceDetail> {
+  const now = new Date();
   const row = await prisma.workplace.create({
     data: {
       organisation: input.organisation,
@@ -78,10 +102,14 @@ export async function createWorkplace(input: CreateWorkplaceInput): Promise<Work
       address: input.address,
       status: 'Active',
       areas: { create: areaCreateData(input.areas) },
+      activity: { create: { type: 'created', message: 'Workplace created.', actor, createdAt: now } },
     },
-    include: { areas: { orderBy: { order: 'asc' }, include: { locations: { orderBy: { order: 'asc' } } } } },
+    include: {
+      areas: { orderBy: { order: 'asc' }, include: { locations: { orderBy: { order: 'asc' } } } },
+      activity: { orderBy: { createdAt: 'asc' } },
+    },
   });
-  return fromRow(row);
+  return { ...fromRow(row), activity: row.activity.map(activityFromRow) };
 }
 
 /** Replaces the whole area/location tree — simplest way to keep it in sync with a
@@ -107,15 +135,22 @@ async function replaceAreas(workplaceId: string, areas: AreaInput[]): Promise<vo
   }
 }
 
-export async function updateWorkplace(id: string, input: UpdateWorkplaceInput): Promise<Workplace | undefined> {
+export async function updateWorkplace(
+  id: string,
+  input: UpdateWorkplaceInput,
+  actor: string,
+): Promise<WorkplaceDetail | undefined> {
   const existing = await prisma.workplace.findUnique({ where: { id } });
   if (!existing) return undefined;
+
+  const now = new Date();
+  const nextStatus = input.status;
 
   if (input.areas) {
     await replaceAreas(id, input.areas);
   }
 
-  const row = await prisma.workplace.update({
+  await prisma.workplace.update({
     where: { id },
     data: {
       organisation: input.organisation ?? existing.organisation,
@@ -123,9 +158,36 @@ export async function updateWorkplace(id: string, input: UpdateWorkplaceInput): 
       code: input.code ?? existing.code,
       industry: input.industry ?? existing.industry,
       address: input.address ?? existing.address,
-      status: input.status ?? existing.status,
+      status: nextStatus ?? existing.status,
     },
-    include: { areas: { orderBy: { order: 'asc' }, include: { locations: { orderBy: { order: 'asc' } } } } },
   });
-  return fromRow(row);
+
+  if (nextStatus && nextStatus !== existing.status) {
+    await prisma.workplaceActivityEntry.create({
+      data: {
+        workplaceId: id,
+        type: 'status_change',
+        message: `Status changed from ${existing.status} to ${nextStatus}.`,
+        actor,
+        createdAt: now,
+      },
+    });
+  }
+
+  const changedFieldNames = (['organisation', 'name', 'code', 'industry', 'address', 'areas'] as const).filter(
+    (key) => input[key] !== undefined,
+  );
+  if (changedFieldNames.length > 0) {
+    await prisma.workplaceActivityEntry.create({
+      data: {
+        workplaceId: id,
+        type: 'updated',
+        message: `Workplace updated (${changedFieldNames.join(', ')}).`,
+        actor,
+        createdAt: now,
+      },
+    });
+  }
+
+  return getWorkplace(id);
 }

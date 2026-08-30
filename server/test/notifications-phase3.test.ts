@@ -216,7 +216,7 @@ describe('Phase 3 — notification completion', () => {
         dueDate: '2026-12-01',
         createdBy: ehsOfficer.name,
         // Verifying requires at least one evidence file (see correctiveActions/controller.ts).
-        evidence: [{ fileName: 'evidence.png', fileSize: 5, mimeType: 'image/png', dataUrl: 'data:image/png;base64,aGVsbG8=' }],
+        evidence: [{ fileName: 'evidence.png', fileSize: 8, mimeType: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }],
       });
       const caId = caRes.body.data.id;
 
@@ -304,7 +304,7 @@ describe('Phase 3 — notification completion', () => {
         assignedTo: assignee.name,
         dueDate: '2020-01-01',
         createdBy: ehsOfficer.name,
-        evidence: [{ fileName: 'evidence.png', fileSize: 5, mimeType: 'image/png', dataUrl: 'data:image/png;base64,aGVsbG8=' }],
+        evidence: [{ fileName: 'evidence.png', fileSize: 8, mimeType: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }],
       });
       const caId = caRes.body.data.id;
 
