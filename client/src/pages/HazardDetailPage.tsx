@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, FileSearch, Pencil, ShieldAlert, Wrench, X } from 'lucide-react';
+import { AlertTriangle, FileSearch, Pencil, ShieldAlert, Wrench } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
 import { EmptyState } from '../components/EmptyState';
@@ -46,7 +46,6 @@ export function HazardDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
-  const [showCorrectiveActionNotice, setShowCorrectiveActionNotice] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
 
   const loadHazard = useCallback(() => {
@@ -267,28 +266,13 @@ export function HazardDetailPage() {
         }
       />
 
-      {showCorrectiveActionNotice && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent">
-          <span>Corrective Actions will be implemented in an upcoming module.</span>
-          <button
-            type="button"
-            onClick={() => setShowCorrectiveActionNotice(false)}
-            title="Dismiss"
-            aria-label="Dismiss"
-            className="text-accent/70 hover:text-accent"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
       <div className="mt-4">
         <HazardQuickActionsBar
           status={hazard.status}
           onBeginReview={() => void performStatusChange('Under Review')}
           onRequireAction={() => void performStatusChange('Action Required')}
           onResolve={() => void performStatusChange('Resolved')}
-          onViewCorrectiveAction={() => setShowCorrectiveActionNotice(true)}
+          onViewCorrectiveAction={() => setActiveTab('related')}
           onAddUpdate={handleAddUpdate}
           onVerify={() => void handleVerify()}
           onClose={requestClose}
