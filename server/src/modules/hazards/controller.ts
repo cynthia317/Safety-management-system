@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import * as hazardService from './service';
 import { validateComment, validateCreateHazard, validateUpdateHazard } from './schema';
-import { canAccessRecordWorkplace, canTriageHazard, workplaceScopeWhere } from '../auth/permissions';
+import { canAccessRecordWorkplace, canTriageHazard, hasOrgWideAccess, workplaceScopeWhere } from '../auth/permissions';
 import { notifyUser } from '../notifications/service';
 import { excludeActor, resolveUserByName, resolveUsersByRole } from '../notifications/recipients';
 import { parsePagination, paginationMeta } from '../../lib/pagination';
@@ -64,6 +64,15 @@ async function notifyHazardStatusChanged(hazard: HazardReport, previousStatus: s
 function forbiddenWorkplace(res: Response): void {
   res.status(403).json({
     error: { code: 'FORBIDDEN', message: 'You do not have access to this workplace.' },
+  });
+}
+
+function noWorkplaceAssigned(res: Response): void {
+  res.status(403).json({
+    error: {
+      code: 'NO_WORKPLACE',
+      message: 'Your account is not assigned to a workplace. Contact your SafetyOS administrator.',
+    },
   });
 }
 
@@ -134,9 +143,22 @@ export async function createHazardHandler(req: Request, res: Response): Promise<
     return;
   }
 
-  if (!canAccessRecordWorkplace(req.user!, value.workplace)) {
-    forbiddenWorkplace(res);
-    return;
+  // A workplace-scoped user (everyone except Admin) can only ever report against their own
+  // workplace — the server derives it from the authenticated session rather than trusting
+  // whatever the client sent, so a mismatched/spoofed value can never expand access. Admin
+  // keeps organisation-wide access and its client-supplied workplace is honored as-is.
+  if (!hasOrgWideAccess(req.user!.role)) {
+    if (!req.user!.workplace.trim()) {
+      noWorkplaceAssigned(res);
+      return;
+    }
+    value.workplace = req.user!.workplace;
+  }
+
+  // Assigning ownership is a triage action that happens after a Worker's initial report —
+  // ignore any assignedTo a Worker sends (including a direct API call bypassing the UI).
+  if (!canTriageHazard(req.user!.role)) {
+    value.assignedTo = '';
   }
 
   // The reporter is always the authenticated caller, not a client-supplied name.

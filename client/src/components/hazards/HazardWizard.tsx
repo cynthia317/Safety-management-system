@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Building2 } from 'lucide-react';
 import { SectionCard } from '../SectionCard';
+import { EmptyState } from '../EmptyState';
 import { Button } from '../Button';
 import { FormField } from '../form/FormField';
 import { Textarea } from '../form/Textarea';
@@ -17,6 +18,7 @@ import { addIncidentComment } from '../../lib/incidentsApi';
 import { ApiError } from '../../lib/api';
 import { useToast } from '../../lib/ToastContext';
 import { useAuth } from '../../lib/AuthContext';
+import { hasOrgWideAccess } from '../../lib/roles';
 import {
   EMPTY_HAZARD_FORM_VALUES,
   STEP_FIELDS,
@@ -87,11 +89,18 @@ export function HazardWizard({ initialValues, sourceIncident }: HazardWizardProp
   const { showToast } = useToast();
   const { user } = useAuth();
 
+  // Every non-Admin role is scoped to the single workplace on their own account (same
+  // boundary the server enforces) — the wizard locks the Workplace field to it rather than
+  // letting the user type/pick one they may not actually have access to.
+  const orgWide = Boolean(user && hasOrgWideAccess(user.role));
+  const ownWorkplace = user?.workplace.trim() ?? '';
+
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [values, setValues] = useState<HazardFormValues>({
     ...EMPTY_HAZARD_FORM_VALUES,
     reportedBy: user?.name ?? '',
     ...initialValues,
+    ...(orgWide ? {} : { workplace: ownWorkplace }),
   });
   const [errors, setErrors] = useState<HazardFormErrors>({});
   const [evidenceFiles, setEvidenceFiles] = useState<PendingEvidence[]>([]);
@@ -200,12 +209,28 @@ export function HazardWizard({ initialValues, sourceIncident }: HazardWizardProp
   }
 
   function handleReportAnother() {
-    setValues({ ...EMPTY_HAZARD_FORM_VALUES, reportedBy: user?.name ?? '' });
+    setValues({
+      ...EMPTY_HAZARD_FORM_VALUES,
+      reportedBy: user?.name ?? '',
+      ...(orgWide ? {} : { workplace: ownWorkplace }),
+    });
     setErrors({});
     setEvidenceFiles([]);
     setGeneralError(null);
     setCurrentStepIndex(0);
     setCreatedHazard(null);
+  }
+
+  if (!orgWide && !ownWorkplace) {
+    return (
+      <SectionCard title="Report a Hazard">
+        <EmptyState
+          icon={Building2}
+          title="No workplace assigned"
+          description="Your account is not assigned to a workplace. Contact your SafetyOS administrator."
+        />
+      </SectionCard>
+    );
   }
 
   if (createdHazard) {
@@ -251,7 +276,12 @@ export function HazardWizard({ initialValues, sourceIncident }: HazardWizardProp
         )}
 
         {stepId === 'location' && (
-          <LocationFields values={values} errors={errors} onFieldChange={setField} />
+          <LocationFields
+            values={values}
+            errors={errors}
+            onFieldChange={setField}
+            lockedWorkplace={orgWide ? undefined : ownWorkplace}
+          />
         )}
 
         {stepId === 'risk' && (

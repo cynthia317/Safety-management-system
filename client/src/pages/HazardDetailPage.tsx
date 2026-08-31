@@ -21,7 +21,7 @@ import { addHazardComment, getHazard, updateHazard } from '../lib/hazardsApi';
 import { ApiError } from '../lib/api';
 import { useToast } from '../lib/ToastContext';
 import { useAuth } from '../lib/AuthContext';
-import { canCreateCorrectiveAction, canManageRiskAssessments } from '../lib/roles';
+import { canCreateCorrectiveAction, canManageFinding, canManageRiskAssessments, canTriageHazard } from '../lib/roles';
 import { HAZARD_STATUSES } from '../lib/hazardOptions';
 import type { HazardDetail, HazardStatus, UpdateHazardPayload } from '../lib/hazardTypes';
 
@@ -39,6 +39,9 @@ export function HazardDetailPage() {
   const { showToast } = useToast();
   const { user } = useAuth();
   const role = user!.role;
+  // Hazard triage (assign, change status, edit) is server-gated by canTriageHazard —
+  // everyone except Worker. Computed once and reused across every triage-only control below.
+  const canTriage = canTriageHazard(role);
 
   const [hazard, setHazard] = useState<HazardDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -240,12 +243,16 @@ export function HazardDetailPage() {
         hazard={hazard}
         actions={
           <>
-            <AssignOfficerMenu assignedTo={hazard.assignedTo} onAssign={handleAssign} />
-            <ChangeStatusMenu current={hazard.status} statuses={HAZARD_STATUSES} onUpdate={performStatusChange} />
-            <Button variant="secondary" onClick={() => navigate(`/findings/new?hazardId=${hazard.id}`)}>
-              <FileSearch className="h-4 w-4" />
-              Create Finding
-            </Button>
+            {canTriage && <AssignOfficerMenu assignedTo={hazard.assignedTo} onAssign={handleAssign} />}
+            {canTriage && (
+              <ChangeStatusMenu current={hazard.status} statuses={HAZARD_STATUSES} onUpdate={performStatusChange} />
+            )}
+            {canManageFinding(role) && (
+              <Button variant="secondary" onClick={() => navigate(`/findings/new?hazardId=${hazard.id}`)}>
+                <FileSearch className="h-4 w-4" />
+                Create Finding
+              </Button>
+            )}
             {canManageRiskAssessments(role) && (
               <Button variant="secondary" onClick={() => navigate(`/risk-assessments/new?hazardId=${hazard.id}`)}>
                 <ShieldAlert className="h-4 w-4" />
@@ -258,10 +265,12 @@ export function HazardDetailPage() {
                 Create Corrective Action
               </Button>
             )}
-            <Button variant="ghost" onClick={() => setEditing(true)}>
-              <Pencil className="h-4 w-4" />
-              Edit
-            </Button>
+            {canTriage && (
+              <Button variant="ghost" onClick={() => setEditing(true)}>
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
+            )}
           </>
         }
       />
@@ -269,6 +278,7 @@ export function HazardDetailPage() {
       <div className="mt-4">
         <HazardQuickActionsBar
           status={hazard.status}
+          canTriage={canTriage}
           onBeginReview={() => void performStatusChange('Under Review')}
           onRequireAction={() => void performStatusChange('Action Required')}
           onResolve={() => void performStatusChange('Resolved')}

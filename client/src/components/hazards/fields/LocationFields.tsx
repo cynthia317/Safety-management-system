@@ -8,9 +8,13 @@ interface LocationFieldsProps {
   values: HazardFormValues;
   errors: HazardFormErrors;
   onFieldChange: <K extends keyof HazardFormValues>(key: K, value: HazardFormValues[K]) => void;
+  /** When set, the caller's role is scoped to a single workplace (everyone except Admin) —
+   * the field shows that workplace as fixed context instead of letting them pick one they
+   * may not actually have access to. */
+  lockedWorkplace?: string;
 }
 
-export function LocationFields({ values, errors, onFieldChange }: LocationFieldsProps) {
+export function LocationFields({ values, errors, onFieldChange, lockedWorkplace }: LocationFieldsProps) {
   const { workplaces, departments } = useWorkplaceSuggestions();
 
   return (
@@ -20,21 +24,27 @@ export function LocationFields({ values, errors, onFieldChange }: LocationFields
         htmlFor="workplace"
         required
         error={errors.workplace}
-        hint="Type your site, facility, or office name."
+        hint={lockedWorkplace !== undefined ? 'Your assigned workplace.' : 'Type your site, facility, or office name.'}
       >
-        <Input
-          id="workplace"
-          list="workplace-suggestions"
-          value={values.workplace}
-          invalid={!!errors.workplace}
-          placeholder="e.g. Main Plant, Downtown Office, Site 4"
-          onChange={(e) => onFieldChange('workplace', e.target.value)}
-        />
-        <datalist id="workplace-suggestions">
-          {workplaces.map((w) => (
-            <option key={w} value={w} />
-          ))}
-        </datalist>
+        {lockedWorkplace !== undefined ? (
+          <Input id="workplace" value={lockedWorkplace} disabled />
+        ) : (
+          <>
+            <Input
+              id="workplace"
+              list="workplace-suggestions"
+              value={values.workplace}
+              invalid={!!errors.workplace}
+              placeholder="e.g. Main Plant, Downtown Office, Site 4"
+              onChange={(e) => onFieldChange('workplace', e.target.value)}
+            />
+            <datalist id="workplace-suggestions">
+              {workplaces.map((w) => (
+                <option key={w} value={w} />
+              ))}
+            </datalist>
+          </>
+        )}
       </FormField>
 
       <FormField

@@ -55,6 +55,22 @@ export function canManageRiskAssessments(role: Role): boolean {
   return role !== 'Worker';
 }
 
+export function canManageFinding(role: Role): boolean {
+  return role !== 'Worker';
+}
+
+// Hazard triage (reviewing, prioritising, assigning, changing status) is restricted to
+// authorised personnel; any authenticated user may still report a hazard or add a comment.
+export function canTriageHazard(role: Role): boolean {
+  return role !== 'Worker';
+}
+
+// Admin has organisation-wide visibility/access; every other role is scoped to the single
+// workplace on their own account. Mirrors server/src/modules/auth/permissions.ts.
+export function hasOrgWideAccess(role: Role): boolean {
+  return role === 'Admin';
+}
+
 export function canWorkOnCorrectiveAction(_role: Role): boolean {
   // Everyone can progress work (start work / submit response) — not restricted to the
   // exact assignee, since actions are sometimes handed off within a team informally.

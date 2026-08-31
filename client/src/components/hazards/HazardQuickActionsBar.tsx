@@ -4,6 +4,10 @@ import type { HazardStatus } from '../../lib/hazardTypes';
 
 interface HazardQuickActionsBarProps {
   status: HazardStatus;
+  /** Whether the signed-in role may change status (server: canTriageHazard — everyone
+   * except Worker). Status-transition actions are omitted entirely when false, since the
+   * backend rejects them outright rather than just discouraging them in the UI. */
+  canTriage: boolean;
   onBeginReview: () => void;
   onRequireAction: () => void;
   onResolve: () => void;
@@ -14,8 +18,20 @@ interface HazardQuickActionsBarProps {
   onReopen: () => void;
 }
 
+interface QuickAction {
+  label: string;
+  icon: typeof ArrowRight;
+  onClick: () => void;
+  variant?: 'primary' | 'secondary';
+  /** True for actions that change status — gated on `canTriage` since the server rejects
+   * them for a Worker. Actions that only post a comment or switch tabs are left ungated,
+   * since the backend places no role restriction on them either. */
+  triageOnly?: boolean;
+}
+
 export function HazardQuickActionsBar({
   status,
+  canTriage,
   onBeginReview,
   onRequireAction,
   onResolve,
@@ -25,33 +41,34 @@ export function HazardQuickActionsBar({
   onClose,
   onReopen,
 }: HazardQuickActionsBarProps) {
-  const actions: { label: string; icon: typeof ArrowRight; onClick: () => void; variant?: 'primary' | 'secondary' }[] =
-    (() => {
-      switch (status) {
-        case 'New':
-          return [{ label: 'Begin Review', icon: ArrowRight, onClick: onBeginReview, variant: 'primary' }];
-        case 'Under Review':
-          return [
-            { label: 'Require Action', icon: Wrench, onClick: onRequireAction },
-            { label: 'Resolve', icon: CheckCheck, onClick: onResolve, variant: 'primary' },
-          ];
-        case 'Action Required':
-          return [
-            { label: 'View Corrective Action', icon: Wrench, onClick: onViewCorrectiveAction },
-            { label: 'Add Update', icon: MessageSquarePlus, onClick: onAddUpdate, variant: 'primary' },
-          ];
-        case 'Resolved':
-          return [
-            { label: 'Verify', icon: ShieldCheck, onClick: onVerify, variant: 'primary' },
-            { label: 'Close', icon: CheckCheck, onClick: onClose },
-            { label: 'Reopen', icon: XCircle, onClick: onReopen },
-          ];
-        case 'Closed':
-          return [{ label: 'Reopen', icon: XCircle, onClick: onReopen }];
-        default:
-          return [];
-      }
-    })();
+  const allActions: QuickAction[] = (() => {
+    switch (status) {
+      case 'New':
+        return [{ label: 'Begin Review', icon: ArrowRight, onClick: onBeginReview, variant: 'primary', triageOnly: true }];
+      case 'Under Review':
+        return [
+          { label: 'Require Action', icon: Wrench, onClick: onRequireAction, triageOnly: true },
+          { label: 'Resolve', icon: CheckCheck, onClick: onResolve, variant: 'primary', triageOnly: true },
+        ];
+      case 'Action Required':
+        return [
+          { label: 'View Corrective Action', icon: Wrench, onClick: onViewCorrectiveAction },
+          { label: 'Add Update', icon: MessageSquarePlus, onClick: onAddUpdate, variant: 'primary' },
+        ];
+      case 'Resolved':
+        return [
+          { label: 'Verify', icon: ShieldCheck, onClick: onVerify, variant: 'primary' },
+          { label: 'Close', icon: CheckCheck, onClick: onClose, triageOnly: true },
+          { label: 'Reopen', icon: XCircle, onClick: onReopen, triageOnly: true },
+        ];
+      case 'Closed':
+        return [{ label: 'Reopen', icon: XCircle, onClick: onReopen, triageOnly: true }];
+      default:
+        return [];
+    }
+  })();
+
+  const actions = allActions.filter((action) => !action.triageOnly || canTriage);
 
   if (actions.length === 0) return null;
 

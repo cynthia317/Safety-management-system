@@ -114,10 +114,14 @@ describe('Phase 1 — workplace/site scoping', () => {
     expect(ids).toContain(hazardAtAlphaId);
   });
 
-  it('blocks creating a record at a workplace the caller cannot access', async () => {
+  // Pilot fix (Phase 7 closure): a scoped user's workplace is now derived server-side from
+  // the authenticated session rather than validated against the client-supplied value, so a
+  // mismatched workplace in the payload is silently ignored instead of rejected — the record
+  // is still only ever created at the caller's own workplace, never the one they attempted.
+  it("never creates a record at a workplace the caller cannot access, ignoring a client-supplied mismatch instead of rejecting it", async () => {
     const res = await withOrigin(userAtBeta.agent.post('/api/hazards')).send({
       title: `${siteAlpha} cross-site attempt`,
-      description: 'Should be rejected.',
+      description: 'Should never be created at Alpha.',
       reportType: 'Unsafe Condition',
       hazardCategory: 'Other',
       workplace: siteAlpha,
@@ -127,6 +131,8 @@ describe('Phase 1 — workplace/site scoping', () => {
       riskLevel: 'Medium',
       reportedBy: userAtBeta.name,
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
+    expect(res.body.data.workplace).toBe(siteBeta);
+    expect(res.body.data.workplace).not.toBe(siteAlpha);
   });
 });
