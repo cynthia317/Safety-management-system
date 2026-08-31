@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, File as FileIcon, FileText, Image as ImageIcon, Plus, Wrench } from 'lucide-react';
+import { AlertTriangle, File as FileIcon, FileText, Image as ImageIcon, Plus, ShieldAlert, Wrench } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
 import { EmptyState } from '../components/EmptyState';
@@ -211,12 +211,20 @@ export function IncidentDetailPage() {
         title={incident.title}
         description={`${incident.referenceNumber} · ${incident.eventType === 'NearMiss' ? 'Near Miss' : 'Incident'} · ${incident.category}`}
         action={
-          <Link to={`/corrective-actions/new?incidentId=${incident.id}&incidentReferenceNumber=${incident.referenceNumber}`}>
-            <Button variant="secondary">
-              <Wrench className="h-4 w-4" />
-              Create Corrective Action
-            </Button>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to={`/hazards/new?incidentId=${incident.id}`}>
+              <Button variant="secondary">
+                <ShieldAlert className="h-4 w-4" />
+                Create Hazard
+              </Button>
+            </Link>
+            <Link to={`/corrective-actions/new?incidentId=${incident.id}&incidentReferenceNumber=${incident.referenceNumber}`}>
+              <Button variant="secondary">
+                <Wrench className="h-4 w-4" />
+                Create Corrective Action
+              </Button>
+            </Link>
+          </div>
         }
       />
 

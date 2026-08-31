@@ -8,10 +8,22 @@
  * check — never the client's own claims about its own file.
  */
 
+// Keeps the base64-encoded evidence array comfortably under Express's 50MB JSON body
+// limit (see app.ts) regardless of how a module's own per-item maxBytes × maxItems adds
+// up (e.g. Incidents/Corrective Actions allow 10 x 15MB = 150MB raw, well past transport) —
+// 20MB decoded re-encodes to ~26.7MB of base64, leaving generous headroom for the rest of
+// the request body and for base64's overhead itself.
+export const MAX_AGGREGATE_EVIDENCE_BYTES = 20 * 1024 * 1024;
+
 export interface EvidenceValidationOptions {
   maxItems: number;
   maxBytes: number;
   allowedMimeTypes: string[];
+  /** Sum of decoded bytes across every accepted item. Keeps a multi-file evidence
+   * submission well under Express's JSON body limit (which bounds the base64-encoded
+   * request, ~4/3 the decoded size) instead of relying on per-item × maxItems, which can
+   * legally add up to far more than the transport layer will ever accept. */
+  maxTotalBytes?: number;
 }
 
 export interface ValidatedEvidenceItem {
@@ -94,6 +106,7 @@ function megabytes(bytes: number): string {
 export function validateEvidence(input: unknown, options: EvidenceValidationOptions): EvidenceValidationResult {
   const items: ValidatedEvidenceItem[] = [];
   const rejections: EvidenceRejection[] = [];
+  let totalBytes = 0;
 
   if (input === undefined || input === null) return { items, rejections };
   if (!Array.isArray(input)) {
@@ -154,6 +167,10 @@ export function validateEvidence(input: unknown, options: EvidenceValidationOpti
       rejections.push({ fileName, reason: `File exceeds the ${megabytes(options.maxBytes)} limit.` });
       continue;
     }
+    if (options.maxTotalBytes !== undefined && totalBytes + bytes.length > options.maxTotalBytes) {
+      rejections.push({ fileName, reason: `Adding this file would exceed the ${megabytes(options.maxTotalBytes)} total evidence limit.` });
+      continue;
+    }
 
     if (typeof item.fileSize !== 'number' || !Number.isFinite(item.fileSize)) {
       rejections.push({ fileName, reason: 'Declared file size is missing or invalid.' });
@@ -172,6 +189,7 @@ export function validateEvidence(input: unknown, options: EvidenceValidationOpti
       continue;
     }
 
+    totalBytes += bytes.length;
     items.push({ fileName, fileSize: bytes.length, mimeType: claimedMimeType, dataUrl: item.dataUrl });
   }
 

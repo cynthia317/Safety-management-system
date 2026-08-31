@@ -1,4 +1,4 @@
-import { validateEvidence } from '../../lib/evidence';
+import { validateEvidence, MAX_AGGREGATE_EVIDENCE_BYTES } from '../../lib/evidence';
 import type {
   CorrectiveActionSourceType,
   CorrectiveActionStatus,
@@ -67,6 +67,7 @@ function sanitizeEvidence(input: unknown): { evidence: EvidenceInput[]; error?: 
   const { items, rejections } = validateEvidence(input, {
     maxItems: MAX_EVIDENCE_ITEMS,
     maxBytes: MAX_EVIDENCE_BYTES,
+    maxTotalBytes: MAX_AGGREGATE_EVIDENCE_BYTES,
     allowedMimeTypes: ALLOWED_MIME_TYPES,
   });
   if (rejections.length === 0) return { evidence: items };

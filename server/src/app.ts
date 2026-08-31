@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import { Pool } from 'pg';
+import { prisma } from './lib/prisma';
 import { config } from './config';
 import { hazardsRouter } from './modules/hazards/routes';
 import { findingsRouter } from './modules/findings/routes';
@@ -66,11 +67,17 @@ export function createApp(): Express {
     }),
   );
 
-  app.get('/api/health', (_req: Request, res: Response) => {
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-    });
+  app.get('/api/health', async (_req: Request, res: Response) => {
+    try {
+      // Cheapest possible round-trip that still proves the DB connection is live — no
+      // table access, no data, nothing to leak on either success or failure.
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    } catch {
+      // Never forward the underlying error (connection string, host, driver detail) —
+      // Render's health check only needs "up" vs "down".
+      res.status(503).json({ status: 'unavailable', timestamp: new Date().toISOString() });
+    }
   });
 
   // Scheduler endpoint for due-soon/overdue reminders — mounted ahead of verifyOrigin
@@ -115,6 +122,16 @@ export function createApp(): Express {
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('[server] unhandled error:', err);
     if (res.headersSent) return;
+
+    // body-parser's over-limit error (see express.json({ limit }) above) — surfaced as a
+    // clear, actionable response rather than falling into the generic 500 below.
+    if (typeof err === 'object' && err !== null && 'type' in err && (err as { type?: unknown }).type === 'entity.too.large') {
+      res.status(413).json({
+        error: { code: 'PAYLOAD_TOO_LARGE', message: 'The request is too large. Reduce the number or size of attached files.' },
+      });
+      return;
+    }
+
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Something went wrong. Please try again.' },
     });

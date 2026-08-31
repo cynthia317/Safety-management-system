@@ -330,12 +330,33 @@ describe('Phase 6 — Incident / Near-Miss module', () => {
 
       const combined = await withOrigin(filterUser.agent.get('/api/incidents?eventType=NearMiss&category=Fire&pageSize=50'));
       expect(combined.body.meta.total).toBe(1);
+
+      const bySearch = await withOrigin(filterUser.agent.get(`/api/incidents?search=${encodeURIComponent(nearMiss.referenceNumber)}`));
+      expect(bySearch.body.data).toHaveLength(1);
+      expect(bySearch.body.data[0].id).toBe(nearMiss.id);
+
+      const bySearchNoMatch = await withOrigin(filterUser.agent.get('/api/incidents?search=no-such-reference-exists'));
+      expect(bySearchNoMatch.body.data).toHaveLength(0);
     }, 60000);
 
     it('still enforces workplace scoping when paginated', async () => {
       const res = await withOrigin(userB.agent.get('/api/incidents?page=1&pageSize=50'));
       expect(res.status).toBe(200);
       expect(res.body.data.every((i: { workplace: string }) => i.workplace === siteB)).toBe(true);
+    });
+
+    it('lets Admin filter by an explicit workplace query param, but ignores it for a scoped role', async () => {
+      const adminRes = await withOrigin(admin.agent.get(`/api/incidents?workplace=${encodeURIComponent(siteB)}&pageSize=50`));
+      expect(adminRes.status).toBe(200);
+      expect(adminRes.body.data.length).toBeGreaterThan(0);
+      expect(adminRes.body.data.every((i: { workplace: string }) => i.workplace === siteB)).toBe(true);
+
+      // A scoped (non-org-wide) role's own workplace always wins over a client-supplied
+      // `workplace` query param — see incidents/controller.ts's `scopeWhere ?? requestedWorkplace`.
+      const scopedRes = await withOrigin(ehsOfficer.agent.get(`/api/incidents?workplace=${encodeURIComponent(siteB)}&pageSize=50`));
+      expect(scopedRes.status).toBe(200);
+      expect(scopedRes.body.data.length).toBeGreaterThan(0);
+      expect(scopedRes.body.data.every((i: { workplace: string }) => i.workplace === siteA)).toBe(true);
     });
   });
 
@@ -467,6 +488,27 @@ describe('Phase 6 — Incident / Near-Miss module', () => {
       );
       expect(res.status).toBe(400);
     });
+
+    it('rejects a multi-file evidence set that individually fits under maxBytes but exceeds the aggregate 20 MB cap', async () => {
+      // Each file is 8 MB (well under the 15 MB per-item cap for Incidents), but three of
+      // them total 24 MB, over the shared MAX_AGGREGATE_EVIDENCE_BYTES cap
+      // (server/src/lib/evidence.ts) — Phase 7 hardening, since the per-item x maxItems
+      // ceiling (150 MB) otherwise exceeds what Express's 50MB JSON body limit will even
+      // accept. 24 MB decoded re-encodes to ~32 MB of base64, safely under that transport
+      // limit, so this exercises the aggregate check itself rather than body-parser's 413.
+      const eightMb = 8 * 1024 * 1024;
+      const res = await withOrigin(ehsOfficer.agent.post('/api/incidents')).send(
+        baseIncidentPayload(ehsOfficer, {
+          evidence: [
+            { fileName: 'a.png', fileSize: eightMb, mimeType: 'image/png', dataUrl: oversizedPngDataUrl(eightMb) },
+            { fileName: 'b.png', fileSize: eightMb, mimeType: 'image/png', dataUrl: oversizedPngDataUrl(eightMb) },
+            { fileName: 'c.png', fileSize: eightMb, mimeType: 'image/png', dataUrl: oversizedPngDataUrl(eightMb) },
+          ],
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect(res.body.error.details.evidence).toMatch(/total evidence limit/i);
+    }, 30000);
 
     it('accepts evidence added after creation via the dedicated endpoint', async () => {
       const incident = await createIncident(ehsOfficer);

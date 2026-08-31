@@ -13,6 +13,7 @@ import { RiskFields } from './fields/RiskFields';
 import { AssignmentFields } from './fields/AssignmentFields';
 import { EvidenceUpload, type PendingEvidence } from './EvidenceUpload';
 import { createHazard } from '../../lib/hazardsApi';
+import { addIncidentComment } from '../../lib/incidentsApi';
 import { ApiError } from '../../lib/api';
 import { useToast } from '../../lib/ToastContext';
 import { useAuth } from '../../lib/AuthContext';
@@ -23,6 +24,21 @@ import {
   type HazardFormErrors,
 } from '../../lib/hazardValidation';
 import type { HazardCategory, HazardFormValues, HazardReport, ReportType, RiskLevel } from '../../lib/hazardTypes';
+
+export interface HazardWizardSourceIncident {
+  id: string;
+  referenceNumber: string;
+}
+
+interface HazardWizardProps {
+  /** Pre-fills fields carried over from a source record (e.g. an Incident) — never
+   * copies free-text fields wholesale, just enough context to save re-typing. */
+  initialValues?: Partial<HazardFormValues>;
+  /** When set, a best-effort activity comment is posted back onto this Incident after
+   * the Hazard is created — mirrors the Finding/Hazard -> Corrective Action cross-link
+   * pattern in NewCorrectiveActionPage.tsx. */
+  sourceIncident?: HazardWizardSourceIncident;
+}
 
 const STEPS: WizardStep[] = [
   { id: 'details', label: 'Report Details' },
@@ -66,13 +82,17 @@ function ReviewSection({
   );
 }
 
-export function HazardWizard() {
+export function HazardWizard({ initialValues, sourceIncident }: HazardWizardProps = {}) {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { user } = useAuth();
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [values, setValues] = useState<HazardFormValues>({ ...EMPTY_HAZARD_FORM_VALUES, reportedBy: user?.name ?? '' });
+  const [values, setValues] = useState<HazardFormValues>({
+    ...EMPTY_HAZARD_FORM_VALUES,
+    reportedBy: user?.name ?? '',
+    ...initialValues,
+  });
   const [errors, setErrors] = useState<HazardFormErrors>({});
   const [evidenceFiles, setEvidenceFiles] = useState<PendingEvidence[]>([]);
   const [generalError, setGeneralError] = useState<string | null>(null);
@@ -155,6 +175,17 @@ export function HazardWizard() {
       });
       setCreatedHazard(created);
       showToast('success', `Hazard ${created.referenceNumber} has been reported.`);
+
+      if (sourceIncident) {
+        try {
+          await addIncidentComment(sourceIncident.id, {
+            author: values.reportedBy.trim(),
+            message: `Created hazard report ${created.referenceNumber}: ${created.title}`,
+          });
+        } catch {
+          // Best-effort cross-link note — don't block the hazard report if this fails.
+        }
+      }
     } catch (err) {
       if (err instanceof ApiError && err.details) {
         setErrors(err.details as HazardFormErrors);
