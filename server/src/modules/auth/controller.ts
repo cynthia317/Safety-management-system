@@ -4,31 +4,8 @@ import {
   validateAdminUpdateUser,
   validateChangePassword,
   validateLogin,
-  validateRegister,
   validateUpdateProfile,
 } from './schema';
-
-export async function registerHandler(req: Request, res: Response): Promise<void> {
-  const { errors, value } = validateRegister(req.body);
-
-  if (errors) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Please correct the highlighted fields.', details: errors },
-    });
-    return;
-  }
-
-  if (await authService.findByEmail(value.email)) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Please correct the highlighted fields.', details: { email: 'An account with this email already exists.' } },
-    });
-    return;
-  }
-
-  const user = await authService.createUser(value);
-  req.session.userId = user.id;
-  res.status(201).json({ data: user });
-}
 
 export async function loginHandler(req: Request, res: Response): Promise<void> {
   const { errors, value } = validateLogin(req.body);

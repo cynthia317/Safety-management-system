@@ -1,5 +1,5 @@
 import { ROLES } from './types';
-import type { AdminUpdateUserInput, ChangePasswordInput, LoginInput, RegisterInput, Role, UpdateProfileInput } from './types';
+import type { AdminUpdateUserInput, ChangePasswordInput, LoginInput, Role, UpdateProfileInput } from './types';
 
 export type ValidationErrors = Record<string, string>;
 
@@ -18,37 +18,6 @@ function isValidEmail(value: unknown): value is string {
 
 function asRecord(body: unknown): Record<string, unknown> {
   return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
-}
-
-// Self-service registration can never grant Admin — that has to come from an existing
-// Admin via the Users management screen. Enforced here too, not just hidden client-side,
-// since the client's role list is only a UI convenience.
-const SELF_REGISTER_ROLES: Role[] = ROLES.filter((r) => r !== 'Admin');
-
-export function validateRegister(body: unknown): ValidationResult<RegisterInput> {
-  const b = asRecord(body);
-  const errors: ValidationErrors = {};
-
-  if (!isNonEmptyString(b.name)) errors.name = 'Name is required.';
-  if (!isValidEmail(b.email)) errors.email = 'Enter a valid email address.';
-  if (!isNonEmptyString(b.password) || b.password.length < 8) errors.password = 'Password must be at least 8 characters.';
-  if (!isNonEmptyString(b.workplace)) errors.workplace = 'Workplace is required.';
-  if (!isNonEmptyString(b.role) || !SELF_REGISTER_ROLES.includes(b.role as Role)) errors.role = 'Select a valid role.';
-
-  if (Object.keys(errors).length > 0) {
-    return { errors, value: undefined as unknown as RegisterInput };
-  }
-
-  return {
-    errors: null,
-    value: {
-      name: (b.name as string).trim(),
-      email: (b.email as string).trim().toLowerCase(),
-      password: b.password as string,
-      role: b.role as Role,
-      workplace: (b.workplace as string).trim(),
-    },
-  };
 }
 
 export function validateLogin(body: unknown): ValidationResult<LoginInput> {

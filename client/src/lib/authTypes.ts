@@ -22,14 +22,6 @@ export interface LoginPayload {
   password: string;
 }
 
-export interface RegisterPayload {
-  name: string;
-  email: string;
-  password: string;
-  role: Role;
-  workplace: string;
-}
-
 export interface UpdateProfilePayload {
   name?: string;
   workplace?: string;

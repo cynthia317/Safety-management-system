@@ -4,7 +4,6 @@ import type {
   AssignableUser,
   ChangePasswordPayload,
   LoginPayload,
-  RegisterPayload,
   UpdateProfilePayload,
   User,
 } from './authTypes';
@@ -20,12 +19,10 @@ export function login(payload: LoginPayload): Promise<User> {
   }).then((res) => res.data);
 }
 
-export function register(payload: RegisterPayload): Promise<User> {
-  return apiRequest<DataEnvelope<User>>('/api/auth/register', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  }).then((res) => res.data);
-}
+// Phase 0 (multi-organisation security hardening): public self-registration has been
+// removed server-side (no POST /api/auth/register route exists any more — see
+// server/src/modules/auth/routes.ts). Account creation is out-of-band until Phase C's
+// organisation-scoped invite flow ships; there is deliberately no client function for it.
 
 export function logout(): Promise<void> {
   return apiRequest<void>('/api/auth/logout', { method: 'POST' });

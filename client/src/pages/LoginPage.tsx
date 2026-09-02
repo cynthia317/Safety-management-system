@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
 import { Button } from '../components/Button';
 import { FormField } from '../components/form/FormField';
@@ -86,13 +86,6 @@ export function LoginPage() {
             </Button>
           </form>
         </div>
-
-        <p className="mt-4 text-center text-xs text-muted">
-          Don&apos;t have an account?{' '}
-          <Link to="/register" className="font-medium text-accent hover:underline">
-            Create one
-          </Link>
-        </p>
 
         <div className="mt-6 rounded-md border border-border bg-canvas-raised p-3 text-xs text-muted">
           <p className="font-medium text-body">Demo accounts</p>

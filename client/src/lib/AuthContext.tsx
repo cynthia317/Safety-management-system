@@ -3,17 +3,15 @@ import {
   getMe,
   login as loginRequest,
   logout as logoutRequest,
-  register as registerRequest,
   updateProfile as updateProfileRequest,
 } from './authApi';
 import { ApiError } from './api';
-import type { LoginPayload, RegisterPayload, UpdateProfilePayload, User } from './authTypes';
+import type { LoginPayload, UpdateProfilePayload, User } from './authTypes';
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (payload: LoginPayload) => Promise<User>;
-  register: (payload: RegisterPayload) => Promise<User>;
   logout: () => Promise<void>;
   updateProfile: (payload: UpdateProfilePayload) => Promise<User>;
 }
@@ -52,12 +50,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return me;
   }, []);
 
-  const register = useCallback(async (payload: RegisterPayload) => {
-    const me = await registerRequest(payload);
-    setUser(me);
-    return me;
-  }, []);
-
   const logout = useCallback(async () => {
     await logoutRequest();
     setUser(null);
@@ -70,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

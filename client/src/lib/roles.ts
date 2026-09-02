@@ -2,14 +2,6 @@ export type Role = 'Worker' | 'Supervisor' | 'EHS Officer' | 'Manager' | 'Admin'
 
 export const ROLES: Role[] = ['Worker', 'Supervisor', 'EHS Officer', 'Manager', 'Admin'];
 
-/**
- * Roles a new user can pick for themselves at self-service sign-up. Admin is
- * deliberately excluded — granting Admin (which can deactivate/reassign any
- * account) has to come from an existing Admin via Settings > Users, never
- * from an anonymous registration form.
- */
-export const SELF_REGISTER_ROLES: Role[] = ROLES.filter((r) => r !== 'Admin');
-
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   Worker: 'View own assigned actions.',
   Supervisor: 'Manage actions within their department.',

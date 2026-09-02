@@ -7,7 +7,6 @@ import {
   listUsersHandler,
   logoutHandler,
   meHandler,
-  registerHandler,
   updateProfileHandler,
 } from './controller';
 import { requireAuth, requireRole } from './middleware';
@@ -15,7 +14,14 @@ import { authAttemptLimiter, sensitiveAccountLimiter } from '../../lib/rateLimit
 
 export const authRouter = Router();
 
-authRouter.post('/register', authAttemptLimiter, registerHandler);
+// Phase 0 (multi-organisation security hardening): public self-registration is
+// permanently removed, not merely hidden. There is deliberately no route at this path —
+// POST /api/auth/register now falls through to app.ts's catch-all 404, the same as any
+// other nonexistent endpoint, rather than a 403 that would confirm the path once existed.
+// There is intentionally no replacement account-creation endpoint yet: adminUpdateUserHandler
+// below only updates an existing user, it does not create one. Until Phase C's
+// organisation-scoped invite flow ships, new accounts are provisioned out-of-band (direct
+// database access by an operator) — existing accounts are entirely unaffected by this change.
 authRouter.post('/login', authAttemptLimiter, loginHandler);
 authRouter.post('/logout', logoutHandler);
 authRouter.get('/me', requireAuth, meHandler);
