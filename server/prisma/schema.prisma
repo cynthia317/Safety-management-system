@@ -18,6 +18,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// The session store (server/src/app.ts's `connect-pg-simple`) creates and owns this table
+// directly at runtime (`createTableIfMissing: true`) — it has never been part of Prisma's
+// schema or migration history. Declared here, `@@ignore`d, purely so `prisma migrate diff`/
+// `prisma migrate dev` stop proposing to DROP it as "not in the desired schema" the moment
+// any other model changes: this is a documented Prisma pattern for a table another tool
+// legitimately owns in the same database. Prisma Client never reads or writes this model
+// (`@@ignore` excludes it from the generated Client entirely) and no application code
+// should ever reference it — `connect-pg-simple` remains its only owner.
+model session {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire], map: "IDX_session_expire")
+  @@ignore
+}
+
 // ---------------------------------------------------------------------------
 // Reference-number counters (HZ-####, FND-####, CA-####, RA-####, INS-YYYY-####)
 // ---------------------------------------------------------------------------
@@ -31,6 +48,39 @@ model Counter {
 }
 
 // ---------------------------------------------------------------------------
+// Organisations (Phase A — multi-organisation expand migration)
+// ---------------------------------------------------------------------------
+// New in this migration. Every relation pointing AT this model from an existing table
+// (Workplace.organisationId, User.organisationId, InspectionTemplate.organisationId) is
+// added nullable — see each model's own comment for why. This table itself starts empty;
+// rows are populated by Phase A2's backfill, never by this migration.
+//
+// No delete endpoint/cascade is intended to ever exist for this model ("Organisation
+// deletion will NOT be supported" — every FK pointing here uses onDelete: Restrict, so the
+// database itself refuses to let an Organisation row be removed while anything still
+// references it). Deliberately no @@unique on `name`: this migration does not yet know
+// whether existing `Workplace.organisation` free-text values collide or need de-duplication
+// (that inventory is Phase A2's job — see server/prisma's Phase A2 human-review step), so
+// asserting uniqueness here now would be a premature, undecided product policy, not a
+// safety requirement — same reasoning as deferring Workplace's own
+// @@unique([organisationId, name]) below.
+model Organisation {
+  id        String   @id @default(uuid())
+  name      String
+  status    String   @default("Active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workplaces          Workplace[]
+  users               User[]
+  inspectionTemplates InspectionTemplate[]
+  invites             Invite[]
+
+  @@index([status])
+  @@index([name])
+}
+
+// ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 
@@ -40,11 +90,67 @@ model User {
   email        String   @unique
   passwordHash String
   role         String
+  // LEGACY, still authoritative for every workplace-scoping check in the running
+  // application during Phase A — do not stop reading/writing this field. `workplaceRef`
+  // below is the new relational pointer, added nullable and currently unused by any
+  // controller/service.
   workplace    String
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
+  // Phase A additions — both nullable, both unread/unwritten by application code this
+  // phase. organisationId has no name collision with an existing column, so the relation
+  // field is simply `organisation`. workplaceId's relation field is named `workplaceRef`
+  // (not `workplace`) purely to avoid colliding with the legacy `workplace: String` column
+  // above — expected to be renamed once that legacy column is dropped in the eventual
+  // contract phase, not before.
+  organisationId String?
+  organisation   Organisation? @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  workplaceId    String?
+  workplaceRef   Workplace?    @relation("UserWorkplace", fields: [workplaceId], references: [id], onDelete: Restrict)
+
   notifications NotificationEvent[]
+  // Assignment-foundation relations (Phase A) — see each domain model's assignedToUserId
+  // comment. Every one of these arrays is empty until a later phase starts writing to the
+  // corresponding FK; nothing populates them in Phase A.
+  assignedHazards           HazardReport[]     @relation("HazardAssignee")
+  assignedFindings          Finding[]          @relation("FindingAssignee")
+  assignedCorrectiveActions CorrectiveAction[] @relation("CorrectiveActionAssignee")
+
+  @@index([organisationId])
+  @@index([workplaceId])
+}
+
+// ---------------------------------------------------------------------------
+// Invites (Phase A — structural only; see server/prisma's Phase C plan)
+// ---------------------------------------------------------------------------
+// No endpoint, service, or frontend reads/writes this table yet — it exists purely so
+// Phase C does not need its own schema migration. `token` is the eventual single-use
+// accept-invite credential; `invitedByUserId` is kept as a plain audit-identity string
+// (matching the existing `actor`/`author`/`createdBy` convention on every activity-entry
+// table in this schema) rather than a formal FK, since Phase A's brief only calls for
+// Organisation/Workplace relations here.
+model Invite {
+  id              String    @id @default(uuid())
+  token           String    @unique
+  email           String
+  role            String
+  organisationId  String
+  organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  workplaceId     String?
+  workplace       Workplace?   @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  // Plain audit-identity string (matches the existing actor/author/createdBy convention on
+  // every activity-entry table in this schema), not a formal FK — Phase A's approved brief
+  // only calls for Organisation/Workplace relations on this model.
+  invitedByUserId String
+  status          String
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  acceptedAt      DateTime?
+
+  @@index([organisationId])
+  @@index([workplaceId])
+  @@index([email])
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +159,8 @@ model User {
 
 model Workplace {
   id           String   @id @default(uuid())
+  // LEGACY, still authoritative for every organisation-scoping comparison in the running
+  // application during Phase A — do not stop reading/writing this field.
   organisation String
   name         String
   code         String
@@ -61,8 +169,38 @@ model Workplace {
   status       String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  // Phase A addition — nullable (every existing row has no Organisation to point to until
+  // Phase A2's backfill runs), unread/unwritten by application code this phase. Named
+  // `organisationRef`, not `organisation`, purely to avoid colliding with the legacy free-text
+  // column above — expected to be renamed once that legacy column is dropped later.
+  organisationId String?
+  organisationRef Organisation? @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+
   areas        Area[]
   activity     WorkplaceActivityEntry[]
+
+  // Phase A back-relations for the new workplaceId FKs added to these models — every array
+  // is empty until a later phase's backfill populates the corresponding column.
+  users              User[]              @relation("UserWorkplace")
+  hazardReports      HazardReport[]
+  incidents          Incident[]
+  inspections        Inspection[]
+  findings           Finding[]
+  correctiveActions  CorrectiveAction[]
+  riskAssessments    RiskAssessment[]
+  notificationEvents NotificationEvent[]
+  invites            Invite[]
+
+  @@index([organisationId])
+  // Deliberately NOT added yet: @@unique([organisationId, name]). Every existing row has
+  // organisationId = null right now, so Postgres would technically accept this constraint
+  // today (NULLs are never considered equal in a unique index) — but adding it now buys
+  // nothing and creates a real risk later: if Phase A2's backfill finds two genuinely
+  // duplicate (organisation, name) pairs in the existing free-text data, an early constraint
+  // would turn that into a failed UPDATE mid-backfill instead of a finding in A2's human-
+  // review inventory report, where it belongs. Add this constraint in A2, immediately after
+  // the duplicate-workplace-name gate confirms zero conflicts — not before.
 }
 
 model WorkplaceActivityEntry {
@@ -111,6 +249,8 @@ model HazardReport {
   description          String
   reportType           String
   hazardCategory       String
+  // LEGACY, still authoritative for every workplace-scoping check in the running
+  // application during Phase A.
   workplace            String
   department           String
   location             String
@@ -119,9 +259,17 @@ model HazardReport {
   riskLevel            String
   status               String
   reportedBy           String
+  // LEGACY, still authoritative for assignment/notification routing during Phase A.
   assignedTo           String
   reportedAt           DateTime
   updatedAt            DateTime
+
+  // Phase A additions — both nullable, both unread/unwritten by application code this
+  // phase. See Workplace model comment (naming) and Assignment-foundation comment on User.
+  workplaceId    String?
+  workplaceRef   Workplace? @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  assignedToUserId String?
+  assignedToUser   User?    @relation("HazardAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
   activity          HazardActivityEntry[]
   comments          HazardComment[]
@@ -130,6 +278,9 @@ model HazardReport {
   correctiveActions CorrectiveAction[]
   riskAssessments   RiskAssessment[]
   incidents         Incident[]
+
+  @@index([workplaceId])
+  @@index([assignedToUserId])
 }
 
 model HazardActivityEntry {
@@ -178,6 +329,8 @@ model Finding {
   referenceNumber           String            @unique
   title                     String
   description               String
+  // LEGACY, still authoritative for every workplace-scoping check in the running
+  // application during Phase A.
   workplace                 String
   department                String
   location                  String
@@ -196,10 +349,17 @@ model Finding {
   questionResponseId        String?           @unique
   questionResponse          QuestionResponse? @relation(fields: [questionResponseId], references: [id], onDelete: SetNull)
   createdBy                 String
+  // LEGACY, still authoritative for assignment/notification routing during Phase A.
   assignedTo                String
   dueDate                   DateTime
   createdAt                 DateTime
   updatedAt                 DateTime
+
+  // Phase A additions — both nullable, both unread/unwritten by application code this phase.
+  workplaceId      String?
+  workplaceRef     Workplace? @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  assignedToUserId String?
+  assignedToUser   User?      @relation("FindingAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
   activity          FindingActivityEntry[]
   comments          FindingComment[]
@@ -207,6 +367,8 @@ model Finding {
 
   @@index([hazardId])
   @@index([inspectionId])
+  @@index([workplaceId])
+  @@index([assignedToUserId])
 }
 
 model FindingActivityEntry {
@@ -248,8 +410,17 @@ model InspectionTemplate {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
+  // Phase A addition — nullable, unread/unwritten by application code this phase. Templates
+  // are fully global (organisation-unaware) until whichever later phase decides and
+  // implements per-organisation template visibility — this column only stages the FK for
+  // that decision, it does not change today's "every template visible to everyone" behaviour.
+  organisationId String?
+  organisation   Organisation? @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+
   sections TemplateSection[]
   activity InspectionTemplateActivityEntry[]
+
+  @@index([organisationId])
 }
 
 model InspectionTemplateActivityEntry {
@@ -310,6 +481,12 @@ model Inspection {
   // created — deliberately denormalized (same as the in-memory version), so
   // later edits to the live template never change a past inspection.
   templateSnapshot     Json
+  // LEGACY free-text fields, both still authoritative during Phase A. `organisation` here
+  // has never been a security boundary (see server/prisma's Phase A audit note — it's
+  // client-supplied display metadata, not validated against Workplace.organisation), and
+  // stays exactly that way in this phase; only `workplace` gets a new relational pointer
+  // below, per the approved architecture (organisation is derived through Workplace, never
+  // stored a second time on a domain record).
   organisation         String
   workplace            String
   area                 String
@@ -324,10 +501,16 @@ model Inspection {
   submittedAt          DateTime?
   reviewedAt           DateTime?
 
+  // Phase A addition — nullable, unread/unwritten by application code this phase.
+  workplaceId  String?
+  workplaceRef Workplace? @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+
   responses         QuestionResponse[]
   activity          InspectionActivityEntry[]
   findings          Finding[]
   correctiveActions CorrectiveAction[]
+
+  @@index([workplaceId])
 }
 
 model QuestionResponse {
@@ -373,6 +556,8 @@ model CorrectiveAction {
   referenceNumber               String          @unique
   title                         String
   description                   String
+  // LEGACY, still authoritative for every workplace-scoping check in the running
+  // application during Phase A.
   workplace                     String
   department                    String
   location                      String
@@ -400,6 +585,7 @@ model CorrectiveAction {
   incident                      Incident?       @relation(fields: [incidentId], references: [id], onDelete: SetNull)
   externalSourceReference       String?
   createdBy                     String
+  // LEGACY, still authoritative for assignment/notification routing during Phase A.
   assignedTo                    String
   dueDate                       DateTime
   responseNote                  String
@@ -411,6 +597,12 @@ model CorrectiveAction {
   updatedAt                     DateTime
   closedAt                      DateTime?
 
+  // Phase A additions — both nullable, both unread/unwritten by application code this phase.
+  workplaceId      String?
+  workplaceRef     Workplace? @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  assignedToUserId String?
+  assignedToUser   User?      @relation("CorrectiveActionAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
   activity CorrectiveActionActivityEntry[]
   comments CorrectiveActionComment[]
   evidence CorrectiveActionEvidenceItem[]
@@ -420,6 +612,8 @@ model CorrectiveAction {
   @@index([inspectionId])
   @@index([riskAssessmentId])
   @@index([incidentId])
+  @@index([workplaceId])
+  @@index([assignedToUserId])
 }
 
 // ---------------------------------------------------------------------------
@@ -433,6 +627,8 @@ model Incident {
   category              String
   title                 String
   description           String
+  // LEGACY, still authoritative for every workplace-scoping check in the running
+  // application during Phase A.
   workplace             String
   department            String
   location              String
@@ -456,6 +652,10 @@ model Incident {
   hazard                HazardReport? @relation(fields: [hazardId], references: [id], onDelete: SetNull)
   updatedAt             DateTime  @updatedAt
 
+  // Phase A addition — nullable, unread/unwritten by application code this phase.
+  workplaceId  String?
+  workplaceRef Workplace? @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+
   activity          IncidentActivityEntry[]
   comments          IncidentComment[]
   evidence          IncidentEvidenceItem[]
@@ -468,6 +668,7 @@ model Incident {
   @@index([leadInvestigator])
   @@index([potentialSeverity])
   @@index([hazardId])
+  @@index([workplaceId])
 }
 
 model IncidentActivityEntry {
@@ -554,6 +755,8 @@ model RiskAssessment {
   title                 String
   assessmentType        String
   description           String
+  // LEGACY, still authoritative for every workplace-scoping check in the running
+  // application during Phase A.
   workplace             String
   department            String
   location              String
@@ -570,11 +773,16 @@ model RiskAssessment {
   createdAt             DateTime
   updatedAt             DateTime
 
+  // Phase A addition — nullable, unread/unwritten by application code this phase.
+  workplaceId  String?
+  workplaceRef Workplace? @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+
   items             RiskAssessmentItem[]
   activity          RiskAssessmentActivityEntry[]
   correctiveActions CorrectiveAction[]
 
   @@index([hazardId])
+  @@index([workplaceId])
 }
 
 model RiskAssessmentItem {
@@ -624,8 +832,13 @@ model NotificationEvent {
   recipientId String?
   recipientUser User? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
   // Denormalized copy of the recipient's workplace at creation time — lets scheduled
-  // reminders and admin/debug queries scope by site without joining through User.
+  // reminders and admin/debug queries scope by site without joining through User. LEGACY,
+  // still authoritative during Phase A; the new `workplaceId` below is a nullable, unread/
+  // unwritten Phase A addition that will eventually replace this string, per the same
+  // reasoning already applied to every other denormalized workplace pointer in this schema.
   workplace              String?
+  workplaceId            String?
+  workplaceRef           Workplace? @relation(fields: [workplaceId], references: [id], onDelete: SetNull)
   priority               String?
   subject                String
   message                String
@@ -644,4 +857,5 @@ model NotificationEvent {
 
   @@index([recipientId])
   @@index([workplace])
+  @@index([workplaceId])
 }
