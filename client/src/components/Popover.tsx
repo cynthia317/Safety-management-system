@@ -4,9 +4,12 @@ interface PopoverProps {
   trigger: ReactNode;
   children: (close: () => void) => ReactNode;
   align?: 'left' | 'right';
+  /** Tailwind width class for the panel — defaults to w-64. Override when the content needs
+   * more room (e.g. a two-column name/role list) to avoid cramped truncation. */
+  width?: string;
 }
 
-export function Popover({ trigger, children, align = 'left' }: PopoverProps) {
+export function Popover({ trigger, children, align = 'left', width = 'w-64' }: PopoverProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -36,7 +39,7 @@ export function Popover({ trigger, children, align = 'left' }: PopoverProps) {
       <div onClick={() => setOpen((prev) => !prev)}>{trigger}</div>
       {open && (
         <div
-          className={`absolute z-40 mt-2 w-64 rounded-md border border-border bg-canvas-raised p-3 shadow-lg ${
+          className={`absolute z-40 mt-2 ${width} max-w-[calc(100vw-2rem)] rounded-md border border-border bg-canvas-raised p-3 shadow-lg ${
             align === 'right' ? 'right-0' : 'left-0'
           }`}
         >

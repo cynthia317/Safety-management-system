@@ -12,12 +12,19 @@ import { ActivityTimeline } from '../components/ActivityTimeline';
 import { getWorkplace, updateWorkplace } from '../lib/workplacesApi';
 import { ApiError } from '../lib/api';
 import { useToast } from '../lib/ToastContext';
+import { useAuth } from '../lib/AuthContext';
+import { canManageWorkplaces } from '../lib/roles';
 import { formatDate } from '../lib/format';
 import type { WorkplaceDetail } from '../lib/workplaceTypes';
 
 export function WorkplaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const { user } = useAuth();
+  // Edit and status changes are Admin-only server-side (canManageWorkplaces in
+  // server/src/modules/auth/permissions.ts) — hide them for every other role rather than
+  // letting the action fail with a 403 toast after the fact.
+  const canManage = canManageWorkplaces(user?.role ?? 'Worker');
 
   const [workplace, setWorkplace] = useState<WorkplaceDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,25 +114,27 @@ export function WorkplaceDetailPage() {
         title={workplace.name}
         description={`${workplace.organisation}${workplace.code ? ` · ${workplace.code}` : ''}${workplace.industry ? ` · ${workplace.industry}` : ''}`}
         action={
-          <div className="flex flex-wrap gap-2">
-            <Link to={`/workplaces/${workplace.id}/edit`}>
-              <Button variant="secondary">
-                <Pencil className="h-4 w-4" />
-                Edit
-              </Button>
-            </Link>
-            {workplace.status === 'Active' ? (
-              <Button variant="secondary" loading={busy} onClick={() => handleStatusChange('Inactive')}>
-                <PowerOff className="h-4 w-4" />
-                Mark Inactive
-              </Button>
-            ) : (
-              <Button variant="secondary" loading={busy} onClick={() => handleStatusChange('Active')}>
-                <CheckCircle2 className="h-4 w-4" />
-                Mark Active
-              </Button>
-            )}
-          </div>
+          canManage ? (
+            <div className="flex flex-wrap gap-2">
+              <Link to={`/workplaces/${workplace.id}/edit`}>
+                <Button variant="secondary">
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+              </Link>
+              {workplace.status === 'Active' ? (
+                <Button variant="secondary" loading={busy} onClick={() => handleStatusChange('Inactive')}>
+                  <PowerOff className="h-4 w-4" />
+                  Mark Inactive
+                </Button>
+              ) : (
+                <Button variant="secondary" loading={busy} onClick={() => handleStatusChange('Active')}>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Mark Active
+                </Button>
+              )}
+            </div>
+          ) : undefined
         }
       />
 

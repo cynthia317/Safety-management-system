@@ -6,6 +6,7 @@ import { Button } from '../Button';
 import { useAuth } from '../../lib/AuthContext';
 import { useToast } from '../../lib/ToastContext';
 import { useWorkplaceSuggestions } from '../../lib/useWorkplaceSuggestions';
+import { hasOrgWideAccess } from '../../lib/roles';
 import { ApiError } from '../../lib/api';
 
 interface FormErrors {
@@ -24,6 +25,12 @@ export function ProfileSettingsForm() {
   const [saving, setSaving] = useState(false);
 
   if (!user) return null;
+
+  // Workplace is the root input to every workplace-scoping check server-side — letting a
+  // scoped user change their own would let them grant themselves another workplace's data.
+  // Only Admin (already organisation-wide) may self-edit it; everyone else needs an
+  // administrator, same as the Role field below.
+  const canEditWorkplace = hasOrgWideAccess(user.role);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,19 +64,31 @@ export function ProfileSettingsForm() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormField label="Workplace" htmlFor="profile-workplace" required error={errors.workplace}>
-            <Input
-              id="profile-workplace"
-              list="profile-workplace-suggestions"
-              value={workplace}
-              invalid={!!errors.workplace}
-              onChange={(e) => setWorkplace(e.target.value)}
-            />
-            <datalist id="profile-workplace-suggestions">
-              {workplaces.map((w) => (
-                <option key={w} value={w} />
-              ))}
-            </datalist>
+          <FormField
+            label="Workplace"
+            htmlFor="profile-workplace"
+            required={canEditWorkplace}
+            error={errors.workplace}
+            hint={canEditWorkplace ? undefined : 'Contact an administrator to change your workplace.'}
+          >
+            {canEditWorkplace ? (
+              <>
+                <Input
+                  id="profile-workplace"
+                  list="profile-workplace-suggestions"
+                  value={workplace}
+                  invalid={!!errors.workplace}
+                  onChange={(e) => setWorkplace(e.target.value)}
+                />
+                <datalist id="profile-workplace-suggestions">
+                  {workplaces.map((w) => (
+                    <option key={w} value={w} />
+                  ))}
+                </datalist>
+              </>
+            ) : (
+              <Input id="profile-workplace" value={workplace} disabled />
+            )}
           </FormField>
           <FormField label="Role" htmlFor="profile-role" hint="Contact an administrator to change your role.">
             <Input id="profile-role" value={user.role} disabled />

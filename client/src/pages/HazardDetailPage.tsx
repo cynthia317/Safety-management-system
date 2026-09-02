@@ -243,7 +243,9 @@ export function HazardDetailPage() {
         hazard={hazard}
         actions={
           <>
-            {canTriage && <AssignOfficerMenu assignedTo={hazard.assignedTo} onAssign={handleAssign} />}
+            {canTriage && (
+              <AssignOfficerMenu assignedTo={hazard.assignedTo} onAssign={handleAssign} workplace={hazard.workplace} />
+            )}
             {canTriage && (
               <ChangeStatusMenu current={hazard.status} statuses={HAZARD_STATUSES} onUpdate={performStatusChange} />
             )}

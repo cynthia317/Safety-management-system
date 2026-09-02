@@ -76,6 +76,25 @@ function noWorkplaceAssigned(res: Response): void {
   });
 }
 
+function invalidAssignee(res: Response): void {
+  res.status(400).json({
+    error: {
+      code: 'INVALID_ASSIGNEE',
+      message: "The selected assignee must be an active user at this hazard's workplace.",
+    },
+  });
+}
+
+// A Hazard may only be assigned to an active user who actually belongs to its workplace —
+// the same rule the (now workplace-scoped) Assign Officer dropdown enforces client-side,
+// re-checked here so a hand-crafted request can't assign across workplaces by bypassing the
+// UI. `''` (unassign) is always valid. Reuses `resolveUserByName`, the same active +
+// name + workplace lookup already used to resolve notification recipients.
+async function isValidAssignee(assignedTo: string, workplace: string): Promise<boolean> {
+  if (!assignedTo.trim()) return true;
+  return Boolean(await resolveUserByName(assignedTo, workplace));
+}
+
 function queryString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
@@ -161,6 +180,11 @@ export async function createHazardHandler(req: Request, res: Response): Promise<
     value.assignedTo = '';
   }
 
+  if (!(await isValidAssignee(value.assignedTo, value.workplace))) {
+    invalidAssignee(res);
+    return;
+  }
+
   // The reporter is always the authenticated caller, not a client-supplied name.
   value.reportedBy = req.user!.name;
 
@@ -211,6 +235,14 @@ export async function updateHazardHandler(req: Request, res: Response): Promise<
   if (value.workplace !== undefined && !canAccessRecordWorkplace(req.user!, value.workplace)) {
     forbiddenWorkplace(res);
     return;
+  }
+
+  if (value.assignedTo !== undefined) {
+    const targetWorkplace = value.workplace ?? existing.workplace;
+    if (!(await isValidAssignee(value.assignedTo, targetWorkplace))) {
+      invalidAssignee(res);
+      return;
+    }
   }
 
   value.actor = req.user!.name;

@@ -63,14 +63,21 @@ export interface AssignableUser {
 // omits email/workplace/isActive/createdAt — those pickers only ever render `.name` and
 // `.role` (see client/src/lib/useUsers.ts and its callers), so there is no reason to send
 // the rest to every authenticated user the way the full `listUsers()` directory does.
+//
 // Scoped to the requester's own workplace so a user can't harvest another site's roster
-// through the assignment dropdown; Admin (organisation-wide access) sees everyone.
-export async function listAssignableUsers(requestingUser: PublicUser): Promise<AssignableUser[]> {
+// through the assignment dropdown; Admin (organisation-wide access) sees everyone by
+// default. `workplace`, when given, scopes the roster to that specific workplace instead —
+// e.g. an Admin assigning a particular record should only be offered that record's own
+// workplace, not every site. It's ignored for a non-Admin caller: they're always scoped to
+// their own workplace regardless (they have no legitimate reason to browse another site's
+// roster, and every record they can even see is already at their own workplace anyway).
+export async function listAssignableUsers(requestingUser: PublicUser, workplace?: string): Promise<AssignableUser[]> {
   const isAdmin = requestingUser.role === 'Admin';
+  const scopeWorkplace = isAdmin ? workplace : requestingUser.workplace;
   const rows = await prisma.user.findMany({
     where: {
       isActive: true,
-      ...(isAdmin ? {} : { workplace: { equals: requestingUser.workplace, mode: 'insensitive' } }),
+      ...(scopeWorkplace ? { workplace: { equals: scopeWorkplace, mode: 'insensitive' } } : {}),
     },
     orderBy: { name: 'asc' },
     select: { id: true, name: true, role: true },

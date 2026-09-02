@@ -166,11 +166,23 @@ describe('Phase 5 — audit trail & evidence hardening', () => {
       expect(reread.body.data.activity).toHaveLength(1);
     });
 
-    it('reading a workplace (and its activity) stays open to every authenticated role, unchanged from before', async () => {
-      const wp = await createWorkplaceRecord(admin, `${workplace} site D`);
+    // Pilot audit (workplace-isolation-security-audit.test.ts): reading the Workplace
+    // directory was previously open to every authenticated role for ANY site, org-wide —
+    // the actual root cause behind a live pilot report of a Worker seeing other
+    // workplaces. It's now scoped the same way every other domain record is
+    // (workplaceScopeWhere/canAccessRecordWorkplace): a same-workplace read still works
+    // unchanged; a cross-workplace read is rejected.
+    it('reading a workplace (and its activity) still works for a same-workplace role, unchanged from before', async () => {
+      const wp = await createWorkplaceRecord(admin, workplace);
       const res = await withOrigin(worker.agent.get(`/api/workplaces/${wp.id}`));
       expect(res.status).toBe(200);
       expect(res.body.data.activity).toHaveLength(1);
+    });
+
+    it('reading a different workplace is rejected for a workplace-scoped role (pilot audit fix)', async () => {
+      const wp = await createWorkplaceRecord(admin, `${workplace} site D`);
+      const res = await withOrigin(worker.agent.get(`/api/workplaces/${wp.id}`));
+      expect(res.status).toBe(403);
     });
   });
 

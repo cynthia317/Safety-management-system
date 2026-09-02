@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import * as workplaceService from './service';
 import { validateCreateWorkplace, validateUpdateWorkplace } from './schema';
-import { canManageWorkplaces } from '../auth/permissions';
+import { canAccessRecordWorkplace, canManageWorkplaces, hasOrgWideAccess } from '../auth/permissions';
 
 function forbidden(res: Response): void {
   res.status(403).json({
@@ -9,8 +9,21 @@ function forbidden(res: Response): void {
   });
 }
 
-export async function listWorkplacesHandler(_req: Request, res: Response): Promise<void> {
-  res.json({ data: await workplaceService.listWorkplaces() });
+function forbiddenWorkplace(res: Response): void {
+  res.status(403).json({
+    error: { code: 'FORBIDDEN', message: 'You do not have access to this workplace.' },
+  });
+}
+
+// The Workplace directory (name, code, industry, address, area/location structure, activity
+// log) is organisation-wide configuration, but a workplace-scoped user (everyone except
+// Admin — see auth/permissions.ts#hasOrgWideAccess) has no legitimate reason to browse
+// another site's directory entry, the same principle already applied to every domain
+// record (Hazard, Incident, ...) via workplaceScopeWhere/canAccessRecordWorkplace. Scoped
+// to the caller's own workplace here too; Admin keeps the full organisation-wide directory.
+export async function listWorkplacesHandler(req: Request, res: Response): Promise<void> {
+  const nameFilter = hasOrgWideAccess(req.user!.role) ? undefined : req.user!.workplace;
+  res.json({ data: await workplaceService.listWorkplaces(nameFilter) });
 }
 
 export async function getWorkplaceHandler(req: Request, res: Response): Promise<void> {
@@ -20,6 +33,11 @@ export async function getWorkplaceHandler(req: Request, res: Response): Promise<
     res.status(404).json({
       error: { code: 'NOT_FOUND', message: `Workplace "${req.params.id}" was not found.` },
     });
+    return;
+  }
+
+  if (!canAccessRecordWorkplace(req.user!, workplace.name)) {
+    forbiddenWorkplace(res);
     return;
   }
 

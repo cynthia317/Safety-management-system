@@ -69,6 +69,18 @@ export async function updateProfileHandler(req: Request, res: Response): Promise
     return;
   }
 
+  // Which workplace a user belongs to is the root input to every workplace-scoping check
+  // in the app (workplaceScopeWhere/canAccessRecordWorkplace) — letting a scoped user
+  // change it themselves would let them grant themselves access to any other workplace's
+  // records on their very next request. Only Admin (already organisation-wide) may change
+  // it here; every other role goes through the Admin-only adminUpdateUserHandler instead.
+  // Silently dropped rather than rejected, the same way a Worker's client-supplied
+  // assignedTo is on hazard creation, so a direct API call can't move a scoped user's data
+  // access to another workplace no matter what it sends.
+  if (req.user!.role !== 'Admin') {
+    delete value.workplace;
+  }
+
   const updated = await authService.updateProfile(req.user!.id, value);
   res.json({ data: updated });
 }
@@ -141,5 +153,9 @@ export async function listUsersHandler(_req: Request, res: Response): Promise<vo
 }
 
 export async function listAssignableUsersHandler(req: Request, res: Response): Promise<void> {
-  res.json({ data: await authService.listAssignableUsers(req.user!) });
+  const workplace =
+    typeof req.query.workplace === 'string' && req.query.workplace.trim().length > 0
+      ? req.query.workplace.trim()
+      : undefined;
+  res.json({ data: await authService.listAssignableUsers(req.user!, workplace) });
 }

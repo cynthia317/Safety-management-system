@@ -12,9 +12,17 @@ import { Input } from '../components/form/Input';
 import { Select } from '../components/form/Select';
 import { listWorkplaces } from '../lib/workplacesApi';
 import { WORKPLACE_STATUSES } from '../lib/workplaceOptions';
+import { hasOrgWideAccess } from '../lib/roles';
+import { useAuth } from '../lib/AuthContext';
 import type { Workplace, WorkplaceStatus } from '../lib/workplaceTypes';
 
 export function WorkplaceListPage() {
+  const { user } = useAuth();
+  // Admin sees the full organisation-wide directory (with the "New Workplace" action and
+  // organisation filter); every other role's GET /api/workplaces already comes back scoped
+  // to their own workplace (server/src/modules/workplaces/controller.ts), so these controls
+  // would have nothing meaningful to offer them anyway — mirrors IncidentListPage's isAdmin gate.
+  const isAdmin = hasOrgWideAccess(user?.role ?? 'Worker');
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,13 +64,13 @@ export function WorkplaceListPage() {
     const term = search.trim().toLowerCase();
     return workplaces
       .filter((w) => {
-        if (organisation !== 'all' && w.organisation !== organisation) return false;
+        if (isAdmin && organisation !== 'all' && w.organisation !== organisation) return false;
         if (status !== 'all' && w.status !== status) return false;
         if (term && !`${w.name} ${w.code} ${w.organisation}`.toLowerCase().includes(term)) return false;
         return true;
       })
       .sort((a, b) => a.organisation.localeCompare(b.organisation) || a.name.localeCompare(b.name));
-  }, [workplaces, search, organisation, status]);
+  }, [workplaces, search, organisation, status, isAdmin]);
 
   const columns: DataTableColumn<Workplace>[] = [
     {
@@ -117,12 +125,14 @@ export function WorkplaceListPage() {
         title="Workplaces"
         description="Organisation → Workplace / Site → Area / Department / Unit → Specific Location."
         action={
-          <Link to="/workplaces/new">
-            <Button variant="primary">
-              <Plus className="h-4 w-4" />
-              New Workplace
-            </Button>
-          </Link>
+          isAdmin ? (
+            <Link to="/workplaces/new">
+              <Button variant="primary">
+                <Plus className="h-4 w-4" />
+                New Workplace
+              </Button>
+            </Link>
+          ) : undefined
         }
       />
 
@@ -139,19 +149,21 @@ export function WorkplaceListPage() {
             className="min-w-[220px] flex-1"
             aria-label="Search workplaces"
           />
-          <Select
-            value={organisation}
-            onChange={(e) => setOrganisation(e.target.value)}
-            aria-label="Filter by organisation"
-            className="w-auto min-w-[180px]"
-          >
-            <option value="all">All Organisations</option>
-            {organisationOptions.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-          </Select>
+          {isAdmin && (
+            <Select
+              value={organisation}
+              onChange={(e) => setOrganisation(e.target.value)}
+              aria-label="Filter by organisation"
+              className="w-auto min-w-[180px]"
+            >
+              <option value="all">All Organisations</option>
+              {organisationOptions.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </Select>
+          )}
           <Select
             value={status}
             onChange={(e) => setStatus(e.target.value as WorkplaceStatus | 'all')}

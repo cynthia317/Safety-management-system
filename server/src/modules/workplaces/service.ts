@@ -56,8 +56,12 @@ function activityFromRow(row: PrismaWorkplaceActivityEntry): WorkplaceActivityEn
   };
 }
 
-export async function listWorkplaces(): Promise<Workplace[]> {
+/** `nameFilter`, when given, scopes the directory to that single workplace (case-insensitive
+ * match on `User.workplace`, which has no FK to this table — see schema.prisma). Omitted for
+ * organisation-wide access (Admin); see workplaces/controller.ts#listWorkplacesHandler. */
+export async function listWorkplaces(nameFilter?: string): Promise<Workplace[]> {
   const rows = await prisma.workplace.findMany({
+    where: nameFilter ? { name: { equals: nameFilter, mode: 'insensitive' } } : undefined,
     orderBy: { name: 'asc' },
     include: { areas: { orderBy: { order: 'asc' }, include: { locations: { orderBy: { order: 'asc' } } } } },
   });

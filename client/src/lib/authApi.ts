@@ -41,9 +41,15 @@ export function listUsers(): Promise<User[]> {
 }
 
 /** Least-privilege "assign to" directory (name + role only), scoped to the caller's
- * workplace on the server. Used by every assignment picker. */
-export function listAssignableUsers(): Promise<AssignableUser[]> {
-  return apiRequest<DataEnvelope<AssignableUser[]>>('/api/users/assignable').then((res) => res.data);
+ * workplace on the server. Used by every assignment picker.
+ *
+ * `workplace` optionally scopes the directory to a specific record's workplace instead of
+ * the caller's own — needed when an org-wide Admin is assigning a specific record and must
+ * only be offered that record's own workplace roster, not every workplace's. Ignored
+ * server-side for a non-Admin caller, who is always scoped to their own workplace anyway. */
+export function listAssignableUsers(workplace?: string): Promise<AssignableUser[]> {
+  const query = workplace ? `?workplace=${encodeURIComponent(workplace)}` : '';
+  return apiRequest<DataEnvelope<AssignableUser[]>>(`/api/users/assignable${query}`).then((res) => res.data);
 }
 
 export function updateProfile(payload: UpdateProfilePayload): Promise<User> {
