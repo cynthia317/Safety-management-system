@@ -91,6 +91,14 @@ export async function cleanupAllTestData(): Promise<void> {
   await prisma.inspection.deleteMany({ where: { OR: [{ workplace: workplaceLike }, { title: nameLike }] } });
   await prisma.inspectionTemplate.deleteMany({ where: { name: nameLike } });
   await prisma.workplace.deleteMany({ where: { name: nameLike } });
-  await prisma.notificationEvent.deleteMany({ where: { recipient: nameLike } });
+  // `recipient` (a display name, e.g. "Iso Worker A") never carries TEST_RUN_PREFIX —
+  // only `email` and `workplace` do (see testEmail/testWorkplaceName above) — so a filter
+  // on `recipient` here matched effectively nothing, and the true ownership signal is
+  // `workplace` (matches this table's own denormalized snapshot, same as every other
+  // table above) OR the recipient's own email (covers a notification whose `workplace`
+  // snapshot is null but whose recipient is still a test-created user).
+  await prisma.notificationEvent.deleteMany({
+    where: { OR: [{ workplace: workplaceLike }, { recipientUser: { email: emailLike } }] },
+  });
   await prisma.user.deleteMany({ where: { email: emailLike } });
 }

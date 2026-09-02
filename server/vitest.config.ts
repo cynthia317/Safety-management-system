@@ -4,6 +4,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['test/**/*.test.ts'],
+    // Runs before any test file (and everything it imports — see test/env.ts's own
+    // header) is loaded. Redirects the Prisma datasource every controller/service under
+    // test uses to TEST_DATABASE_URL, refusing to start at all if that isn't safely
+    // configured — this is what prevents the suite from ever touching production.
+    setupFiles: ['./test/env.ts'],
     testTimeout: 30000,
     // beforeAll hooks in these tests create several users (bcrypt hashing + a real HTTP
     // login round trip against the dev database each time) — generous enough that normal
